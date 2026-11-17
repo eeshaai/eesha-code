@@ -1,0 +1,63 @@
+schema: 1
+id: kiro
+name: Kiro
+desc: Kiro's own spec process - requirements, design, tasks - with a new Kiro chat for each phase, in Kiro's Spec mode. Runs on Kiro only.
+
+# Runs Kiro's own process, not Eesha's prompts: no Idea phase and no
+# instruction files. Each phase sends its `command:` below and nothing
+# else. The texts are the ones Kiro's own `/spec` command sends, with
+# one line added to each: write only this phase's document, then stop.
+# A test on 2026-11-17 showed a "Continue" chat goes on to the next
+# document by itself without that line. The panel also refuses any
+# write to another phase's document, so Kiro is told no if it tries.
+native: kiro
+
+# Kiro's own folder. Every folder in it is a Kiro spec - including ones
+# you started in the Kiro IDE.
+specsDir: .kiro/specs
+
+# Kiro's Spec mode only exists on Kiro, so these two win over the
+# runtime and mode picked in the compose box. The model you pick for
+# Kiro still applies.
+ai:
+  provider: kiro-cli-v3
+  agentMode: spec
+
+# Kiro's documents have no "Open Questions" section to stop on.
+blockOnOpenQuestions: false
+
+specTypes:
+  - id: feature
+    label: Feature
+    stages: [requirements, design, tasks, implement]
+
+stages:
+  - id: requirements
+    label: Requirements
+    command: >-
+      Start a new spec called "${{ spec.name }}". Create the ${{ spec.dir }}/ directory
+      and draft the initial requirements document. Write only requirements.md, then stop -
+      do not write the design or the tasks.
+
+  - id: design
+    label: Design
+    command: >-
+      Continue working on the "${{ spec.name }}" spec. The existing documents are:
+      ${{ phase.existing }}. Write the design document, design.md, and nothing else, then
+      stop - do not write tasks.md.
+
+  - id: tasks
+    label: Tasks
+    command: >-
+      Continue working on the "${{ spec.name }}" spec. The existing documents are:
+      ${{ phase.existing }}. Write the task list, tasks.md, and nothing else, then stop -
+      do not start any task.
+
+  - id: implement
+    label: Implementation
+    command: |-
+      Continue working on the "${{ spec.name }}" spec. Implement these tasks from tasks.md, in this order, and nothing else:
+
+      ${{ phase.tasks }}
+
+      When a task is done and its tests pass, mark its checkbox in tasks.md as done. A task you could not finish stays unticked - say what blocked you and stop there.

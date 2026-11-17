@@ -1,0 +1,90 @@
+{
+    "id": "ado-release",
+    "name": "ADO classic release",
+    "description": "Azure DevOps classic releases (the ones under vsrm.dev.azure.com, which the ADO MCP server cannot reach): list definitions, list the builds a definition can take, create a release with chosen builds and held stages, and promote a release to a stage. Ships a tab that picks releases and builds and starts the workflow with them. No AI involved.",
+
+    "version": { "major": 1, "minor": 0, "patch": 0 },
+
+    "args": [
+        {
+            "name": "orgUrl",
+            "type": "string",
+            "label": "Organization URL",
+            "description": "https://dev.azure.com/{org}. The release host (vsrm.dev.azure.com) is derived from it.",
+            "required": true
+        },
+        {
+            "name": "project",
+            "type": "string",
+            "label": "Project",
+            "required": true
+        },
+        {
+            "name": "operation",
+            "type": "string",
+            "label": "Operation",
+            "description": "definitions lists the release definitions. versions lists the builds each artifact of a definition can take, and its stages. create makes a release from a definition, with pinned builds and held stages. promote starts a release's stage.",
+            "options": ["definitions", "versions", "create", "promote"],
+            "required": true
+        },
+        {
+            "name": "definition",
+            "type": "number",
+            "label": "Definition id",
+            "description": "For versions and create."
+        },
+        {
+            "name": "pin",
+            "type": "object",
+            "label": "Builds to pin",
+            "description": "For create: artifact alias to version id, e.g. { \"_web-ci\": \"4821\" }. An alias left out takes the definition's default (latest) version."
+        },
+        {
+            "name": "hold",
+            "type": "array",
+            "label": "Stages to hold",
+            "description": "For create: stage names whose deployment waits for promote instead of starting on its own, e.g. [\"UAT\"]."
+        },
+        {
+            "name": "description",
+            "type": "string",
+            "label": "Release description",
+            "description": "For create. Shown on the release in ADO."
+        },
+        {
+            "name": "release",
+            "type": "number",
+            "label": "Release id",
+            "description": "For promote."
+        },
+        {
+            "name": "stage",
+            "type": "string",
+            "label": "Stage",
+            "description": "For promote: the stage name to deploy, e.g. UAT."
+        },
+        {
+            "name": "auth",
+            "type": "string",
+            "label": "Auth",
+            "description": "az uses a short-lived token from the CLI's own login - no PAT anywhere. pat is for a machine that cannot have az.",
+            "options": ["az", "pat"],
+            "default": "az"
+        },
+        {
+            "name": "patEnv",
+            "type": "string",
+            "label": "PAT env var",
+            "description": "Env var holding the personal access token. Read only when auth is pat.",
+            "default": "AZURE_DEVOPS_EXT_PAT"
+        }
+    ],
+
+    "artifacts": ["definitions", "versions", "environments", "releaseId", "name", "stage", "status"],
+
+    "secretsFrom": "patEnv",
+
+    "ui": { "label": "ADO releases", "surface": "run" },
+
+    "execution": { "target": "index.js" }
+}

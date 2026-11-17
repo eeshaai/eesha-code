@@ -1,0 +1,29 @@
+// The wrappers in ui.tsx around the UI library's components.
+
+// UiIcon: a library icon used only as decoration.
+.ui-icon {
+
+    // Never squeezed by a flex parent, and never stretched to the line
+    // height of the text beside it.
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    line-height: 1;
+
+    // Selecting a log line selects only its text, not the icon.
+    user-select: none;
+
+    .icon {
+        line-height: 1;
+    }
+}
+
+// EmptyNote: the library's EmptyState filling the pane or tab it sits in.
+//
+// Always the UI font: a log body sets the code font, and an empty state
+// in it read as a line of output. Full width so it centres in the pane,
+// whatever layout the pane uses.
+.empty-note {
+    width: 100%;
+}

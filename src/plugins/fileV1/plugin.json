@@ -1,0 +1,43 @@
+{
+    "id": "file",
+    "name": "Read or write a file",
+    "description": "Reads a file into a run variable, or writes one from a value. The 'executes' half of AI proposes, a human approves, a plugin executes.",
+
+    "version": { "major": 1, "minor": 0, "patch": 0 },
+
+    "args": [
+        {
+            "name": "operation",
+            "type": "string",
+            "label": "Operation",
+            "description": "What to do with the path.",
+            "required": true,
+            "options": ["read", "write", "mkdir"]
+        },
+        {
+            "name": "path",
+            "type": "string",
+            "label": "Path",
+            "description": "Relative to the workspace unless absolute.",
+            "required": true
+        },
+        {
+            "name": "content",
+            "type": "string",
+            "label": "Content",
+            "description": "What to write. Required when writing, ignored when reading.",
+            "multiline": true
+        },
+        {
+            "name": "createDirectories",
+            "type": "boolean",
+            "label": "Create parent folders",
+            "description": "Create the parent folders when writing, rather than failing on a missing one.",
+            "default": true
+        }
+    ],
+
+    "artifacts": ["content", "path", "lines"],
+
+    "execution": { "target": "index.js" }
+}

@@ -1,0 +1,31 @@
+@use "scale" as *;
+
+// Who the aside's task tabs are about - sits above the tab strip.
+.detail-head {
+
+    &__name {
+        font-size: var(--font-size-sm);
+        font-weight: 700;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__plugin {
+        flex: 0 0 auto;
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        color: var(--color-fg-muted);
+    }
+}
+
+// Which step the aside is following vs. pinned to - see detail-head.
+.detail-head__mode {
+    flex: 0 0 auto;
+    padding: 0 var(--spacing-xs);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: $radius-pill;
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-xs);
+}

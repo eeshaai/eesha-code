@@ -1,0 +1,169 @@
+// The Eesha UI library, and what makes it follow the page theme.
+//
+// ------------------------------------------------------------------
+// What this file loads
+// ------------------------------------------------------------------
+//
+// The library's global stylesheet, as it ships: its reset (every
+// element gets margin and padding 0), its heading sizes, its token
+// defaults, and the icon sizes and colours. The panel rules that
+// come after this file in theme.scss are written knowing the reset is
+// there.
+//
+// It is loaded first on purpose. The library and this panel both
+// define --color-fg, --spacing-md, --font-size-sm and about twenty
+// more on :root. Whichever comes later wins, and it has to be ours, so
+// those shared names keep following the page theme.
+//
+// ------------------------------------------------------------------
+// Why the library's themes never switch on
+// ------------------------------------------------------------------
+//
+// The library's own light and dark palettes use fixed greys. The
+// names set below come after them in the same stylesheet, so they win.
+// The page theme (src/web/page.scss) is what decides the colours.
+//
+// So the colour names that only the library uses are filled in below
+// from this panel's tokens, and from the page's own --eesha-*
+// variables where this panel has no token for them. Each one reads a token, never a hex, so a custom
+// theme (data-eesha-theme) moves the library along with the panel.
+
+@use "../../SubModules/ui-lib/src/index";
+
+:root {
+
+    // ============ Surfaces and text ============
+
+    --color-bg-focus: var(--color-bg-active);
+
+    --color-fg-hover: var(--color-fg);
+    --color-fg-focus: var(--color-fg);
+    --color-fg-active: var(--color-fg);
+
+    --color-border-hover: var(--color-border-strong);
+    --color-border-focus: var(--color-focus);
+    --color-border-active: var(--color-border-strong);
+
+    // The text on a filled danger button: the theme's button text
+    // colour, which every theme keeps legible on its button fill.
+    --color-on-error: var(--color-action-fg);
+
+    // The library's filled blue (buttons, primary/success/info chips): its
+    // hover and the text on it follow the same theme button colours. The
+    // text on a filled warning (amber) is the dark ink our own warning
+    // counts use.
+    --color-primary-hover: var(--color-action-bg-hover);
+    --color-on-primary: var(--color-action-fg);
+    --color-on-warning: var(--color-status-ink);
+
+    // The same blue as text on the page - a primary outline or ghost
+    // button, a link: the theme link colour, as our own links use.
+    --color-primary-text: var(--color-link);
+
+    --color-text-primary: var(--color-fg);
+    --color-text-secondary: var(--color-fg-muted);
+    --color-text-placeholder: var(--eesha-input-placeholder, var(--color-fg-muted));
+    --color-text-muted: var(--color-fg-muted);
+
+    // The library's bars, widgets and strong text. Each takes the page theme's
+    // own colour for the same part, and this panel's token when the
+    // theme gives none.
+    --color-bg-bar: var(--eesha-bar-bg, var(--color-bg-elevated));
+    --color-border-bar: var(--eesha-bar-border, var(--color-border));
+    --color-bg-widget: var(--eesha-widget-bg, var(--color-bg-elevated));
+    --color-border-widget: var(--eesha-widget-outline, var(--color-border));
+    --color-fg-strong: var(--eesha-text, var(--color-fg));
+    --color-fg-error: var(--eesha-error-text, var(--color-error));
+
+    // The Stop button's fill: the theme's error fill, as our own danger buttons.
+    --color-bg-stop: var(--eesha-error-fill, var(--color-error));
+
+    // ============ Status ============
+
+    // A chat that is working, one that waits on the person, the AI's own
+    // mark, and a changed file in git.
+    --color-status-working: var(--eesha-progress, var(--color-info));
+    --color-status-waiting: var(--color-error);
+    --color-ai: var(--eesha-ai, var(--color-keyword));
+    --color-git-modified: var(--eesha-git-modified, var(--color-warning));
+
+    --color-bg-success: var(--color-success);
+    --color-bg-warning: var(--color-warning);
+    --color-bg-error: var(--color-error);
+    --color-bg-info: var(--color-info);
+
+    --color-text-success: var(--color-success);
+    --color-text-warning: var(--color-warning);
+    --color-text-error: var(--color-error);
+    --color-text-info: var(--color-info);
+
+    // ============ Code colours ============
+
+    // The theme's colours for a key, a string, a number and a boolean
+    // in a data view.
+    --color-json-key: var(--eesha-value-name, var(--color-keyword));
+    --color-json-value: var(--eesha-value-other, var(--color-fg));
+    --color-json-string: var(--eesha-value-string, var(--color-success));
+    --color-json-number: var(--eesha-value-number, var(--color-info));
+    --color-json-boolean: var(--eesha-value-boolean, var(--color-keyword));
+    --color-json-null: var(--eesha-value-boolean, var(--color-warning));
+    --color-json-brace: var(--color-fg-muted);
+
+    --color-xml-tag: var(--eesha-value-name, var(--color-keyword));
+    --color-xml-attr: var(--color-warning);
+    --color-xml-string: var(--eesha-value-string, var(--color-success));
+    --color-xml-comment: var(--color-fg-muted);
+    --color-xml-lineno: var(--eesha-line-number, var(--color-fg-muted));
+    --color-xml-symbol: var(--color-fg-muted);
+
+    // The code view's colours. The theme sets one colour each for
+    // "a keyword, a function, a type".
+    --color-code-keyword: var(--eesha-code-keyword, var(--color-keyword));
+    --color-code-string: var(--eesha-value-string, var(--color-success));
+    --color-code-number: var(--eesha-value-number, var(--color-info));
+    --color-code-function: var(--eesha-code-function, var(--color-warning));
+    --color-code-type: var(--eesha-code-type, var(--color-info));
+    --color-code-variable: var(--eesha-code-variable, var(--color-fg));
+    --color-code-tag: var(--eesha-value-name, var(--color-keyword));
+    --color-code-comment: var(--color-fg-muted);
+    --color-code-meta: var(--color-fg-muted);
+
+    --color-method-get: var(--color-info);
+    --color-method-post: var(--color-success);
+    --color-method-put: var(--color-warning);
+    --color-method-delete: var(--color-error);
+    --color-method-patch: var(--color-keyword);
+
+    // ============ Steps this panel's scale does not have ============
+
+    // The library ships these in pixels. Here they continue this
+    // panel's own scale, so they grow with the page font and the
+    // density knob like every other step.
+    --font-size-2xl: 2.1rem;
+    --font-size-3xl: 2.6rem;
+
+    --spacing-2xl: calc(var(--space-unit) * 8);
+    --spacing-3xl: calc(var(--space-unit) * 12);
+
+    --radius-xl: 14px;
+}
+
+// ------------------------------------------------------------------
+// The two parts of the reset this panel takes back
+// ------------------------------------------------------------------
+//
+// The reset puts a font and a colour on every single element. That
+// stops them passing down from parent to child: a span inside a code
+// block would get the library's sans-serif font instead of the block's
+// monospace one, and a word inside a red error line would get the plain text
+// colour instead of red. Giving every element "inherit" restores the normal
+// passing-down back. The margin and padding reset stays as it is.
+//
+// The reset also colours scrollbars with the page background, so on
+// the page background the scrollbar handle cannot be seen. They take
+// the theme's scrollbar colour instead.
+* {
+    font-family: inherit;
+    color: inherit;
+    scrollbar-color: var(--eesha-scrollbar, rgba(121, 121, 121, 0.4)) transparent;
+}

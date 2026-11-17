@@ -1,0 +1,149 @@
+{
+    "id": "ai",
+    "name": "AI agent",
+    "description": "Runs an agent session on whichever provider the task names. It reads, writes and works in the repo - put a gate on a later task if you want to review before anything downstream runs.",
+    "version": {
+        "major": 1,
+        "minor": 0,
+        "patch": 0
+    },
+    "args": [
+        {
+            "name": "prompt",
+            "type": "string",
+            "label": "Prompt",
+            "description": "What to ask the agent to do.",
+            "required": true,
+            "multiline": true,
+            "logged": false
+        },
+        {
+            "name": "provider",
+            "type": "string",
+            "label": "Provider",
+            "description": "Which agent runtime the session runs on. The vendor is named here and nowhere else, so swapping one is this line. Only providers registered by this build are accepted - a name this build does not know fails saying which ones it does.",
+            "default": "ghcp"
+        },
+        {
+            "name": "model",
+            "type": "string",
+            "label": "Model",
+            "description": "Model to run the session with. Meaning is the provider's; this task passes it through."
+        },
+        {
+            "name": "context",
+            "type": "object",
+            "label": "Context documents",
+            "description": "Named documents laid into the session before the prompt, keyed by name - usually file args, e.g. { requirements: { file: specs/requirements.md } }. This is the whole context the session starts from: what is not named here, the session has not seen."
+        },
+        {
+            "name": "attachments",
+            "type": "array",
+            "label": "Attachments",
+            "description": "Files the session may open, as [{ path, name }]. Paths are absolute and need not be inside the working directory. Unlike 'context', which pastes content into the prompt, an attachment is a file the agent reads when it needs it - use it for instruction files and documents that would otherwise dominate the prompt."
+        },
+        {
+            "name": "detach",
+            "type": "boolean",
+            "label": "Do not wait",
+            "description": "Deliver the prompt and return the session's id without waiting for the turn - for a conversation a person is going to join in the chat page. The agent still does the work; the engine holds the session until it goes idle. Nothing is reported and 'target' is not checked, because at the moment the task returns nothing has happened yet."
+        },
+        {
+            "name": "cleanup",
+            "type": "boolean",
+            "label": "Delete the session after",
+            "description": "Delete the provider's stored conversation once the task succeeds. Off by default: every session stays in the provider's chat history, reopenable. A failed session is kept regardless - it is the conversation most worth reopening - and a detached one is not touched, since it was started for a person to join. Set true when a pipeline runs sessions nobody will reopen.",
+            "default": false
+        },
+        {
+            "name": "keep",
+            "type": "boolean",
+            "label": "Keep session open",
+            "description": "Hold the session after this turn instead of disposing it, so a later task naming this task's session id as 'continueSession' can pick the same conversation back up. Off by default - the session is disposed after the turn.",
+            "default": false
+        },
+        {
+            "name": "continueSession",
+            "type": "string",
+            "label": "Continue session",
+            "description": "A session id from an earlier 'keep: true' run. If that session is still held, this turn runs on it instead of starting a new one - the conversation's own memory, on top of whatever the prompt supplies fresh. If the session is gone, a new one starts as usual, silently."
+        },
+        {
+            "name": "interactive",
+            "type": "boolean",
+            "label": "A person can answer",
+            "description": "Someone is watching this session in a panel and can answer a question the agent asks. Off by default: in an unattended run a question has nobody to wait for, so the agent is told no one is there and to carry on with an assumption. Set by the spec panel; a workflow file that sets it owes the run a person at the panel.",
+            "default": false
+        },
+        {
+            "name": "target",
+            "type": "string",
+            "label": "Target file",
+            "description": "The file this session is expected to produce, relative to the working directory. The path is told to the agent, and the task fails if the session ends without the file on disk - the task's honesty is the file, not the agent's word."
+        },
+        {
+            "name": "title",
+            "type": "string",
+            "label": "Session title",
+            "description": "A short human title, sent as the prompt's first line. Chat histories name a session by its opening text - without this, a session shows up as its first context delimiter."
+        },
+        {
+            "name": "systemInstructions",
+            "type": "string",
+            "label": "System instructions",
+            "multiline": true,
+            "description": "Standing instruction for every turn, appended to the provider's own guardrails - never replacing them, so its safety instructions always survive alongside this. Either the text itself, or 'file://' followed by a full path - build it with this build's own path variables (${{ workspaceFolder }}, ${{ workspaceConfig }}, ${{ home }}, ${{ cwd }}) - naming a file to read instead, once, when the session starts. Passing 'systemMessage' or 'systemPrompt' straight through as an undeclared arg does nothing: both are provider-internal names this plugin owns and ignores from the passthrough, precisely so this is the one channel and it always appends."
+        },
+        {
+            "name": "plan",
+            "type": "string",
+            "label": "Plan file",
+            "description": "A checklist file whose boxes the session may tick, relative to the working directory. Set, the session gets a task_done tool: the agent names a task's id and the engine flips that one box in this file - the plan never goes through the model to change one character. Leave unset for a session with no boxes to tick."
+        },
+        {
+            "name": "checkPlan",
+            "type": "string",
+            "label": "Plan being written",
+            "description": "A plan file this session is writing, relative to the working directory. Set, the session gets a check_plan tool that reads the draft the way the implement phase will and reports every problem by line, so the agent fixes them before it stops. The spec panel sets it on the phase that writes the plan."
+        },
+        {
+            "name": "files",
+            "type": "array",
+            "label": "Files worked on",
+            "description": "The files this session is known to work on, relative to the working directory. A steering file with 'inclusion: fileMatch' whose 'fileMatchPattern' matches one of them is attached to the first message. The spec panel sets it for an implement wave from the plan's 'Files:' lines."
+        },
+        {
+            "name": "refuseWrites",
+            "type": "array",
+            "label": "Files not to write",
+            "description": "Files this session may not write, relative to the working directory. A write to one is refused at the permission check and the agent is told why. The spec panel sets it for a Kiro or Spec Kit phase: the documents of the spec's other phases, so Kiro's spec mode stops at the document this phase writes. Only ACP runtimes check it - Kiro always runs on one."
+        },
+        {
+            "name": "verbatim",
+            "type": "boolean",
+            "label": "Send the prompt as written",
+            "description": "The prompt is already the whole message - send it exactly as given, without adding the title, the 'context' documents or the 'target' instruction. Off by default, and every ordinary task leaves it off: composing the message is what this plugin is for. It exists for a rerun that hands back the message a person edited in the AI Session tab, which is the composed text already - composing it a second time would repeat the title, the documents and the target instruction inside themselves. Attachments still go: they are files the session opens, not text in the prompt.",
+            "default": false
+        },
+        {
+            "name": "allowedEnv",
+            "type": "array",
+            "label": "Allowed environment variables",
+            "description": "Environment variable names that ${{ env.NAME }} in an MCP declaration may read - names only, never values. One grant among three: env.allowed in settings.json and the workflow's own env: block also grant names, and env.denied vetoes them all. A name nothing grants fails the task with an error saying how to grant it."
+        },
+        {
+            "name": "mcp",
+            "type": "object",
+            "label": "MCP servers and tools",
+            "description": "Which of settings.json's MCP servers this session gets, and which of their tools - { servers: [ado, github], tools: { ado: [wit_get_work_item] } }. Both are allowlists and both are optional: no 'servers' means every declared server, no 'tools' means every tool of each selected server. A name settings.json does not declare fails the task, naming the declared ones. A server disabled in settings.json stays out even when named here. A task chooses among the machine's servers; it cannot declare one."
+        }
+    ],
+    "passthrough": true,
+    "artifacts": [
+        "summary",
+        "files"
+    ],
+    "execution": {
+        "target": "index.js"
+    }
+}

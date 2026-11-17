@@ -1,0 +1,54 @@
+{
+    "id": "mcp",
+    "name": "MCP tool call",
+    "description": "Calls one tool on one MCP server declared in settings.json, and stores what it answered as artifacts. No AI involved - the same servers an ai@1 session gets, reached directly when the work needs no model.",
+
+    "version": { "major": 1, "minor": 0, "patch": 0 },
+
+    "args": [
+        {
+            "name": "server",
+            "type": "string",
+            "label": "Server",
+            "description": "The name of a server declared under ai.mcpServers in settings.json. A task chooses among the machine's servers; it cannot declare one.",
+            "required": true
+        },
+        {
+            "name": "tool",
+            "type": "string",
+            "label": "Tool",
+            "description": "The tool's bare name, as the MCP view lists it - wit_get_work_item, not ado-wit_get_work_item. The wire prefix is a session's concern, not this task's.",
+            "required": true
+        },
+        {
+            "name": "arguments",
+            "type": "object",
+            "label": "Arguments",
+            "description": "The tool's own arguments, handed over as written. Nothing here checks them - the shape belongs to the server, so a wrong name fails at the server rather than before the run."
+        },
+        {
+            "name": "allowedEnv",
+            "type": "string[]",
+            "label": "Allowed env vars",
+            "description": "Extra environment variable names this task grants the server declaration, for a ${{ env.NAME }} inside it. env.denied still vetoes."
+        },
+        {
+            "name": "timeoutMs",
+            "type": "number",
+            "label": "Timeout (ms)",
+            "description": "Ceiling on the whole conversation - start, handshake, call. Higher than an HTTP call's default because a stdio server is usually an npx download before it is a server.",
+            "default": 60000
+        },
+        {
+            "name": "failOnToolError",
+            "type": "boolean",
+            "label": "Fail on a tool error",
+            "description": "true fails the task when the server marks its answer as an error. false stores it and carries on - for when the error is data a later if: reads.",
+            "default": true
+        }
+    ],
+
+    "artifacts": ["text", "structured", "isError"],
+
+    "execution": { "target": "index.js" }
+}

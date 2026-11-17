@@ -1,0 +1,217 @@
+// Eesha Code's page theme.
+//
+// ------------------------------------------------------------------
+// Two layers, and the rule that keeps them apart
+// ------------------------------------------------------------------
+//
+// CONTRACT   Every rule in this file paints with a semantic token -
+//            --color-fg, --spacing-md, --control-height. Below this
+//            block, no rule may name a --eesha-* variable or a raw
+//            hex. That single restriction is what makes a second theme
+//            possible: the rules never learn where their colours came
+//            from, so swapping the source swaps the whole panel.
+//
+// BINDING    What fills the contract. The default binding maps it onto
+//            the page's own --eesha-* variables. src/web/page.scss
+//            sets those variables for the dark and the light look, so
+//            the panel repaints when the theme changes. Where a
+//            variable is missing, the fallback value in this file is
+//            used.
+//
+// A custom theme is just a second binding block. Set
+// `data-eesha-theme="<name>"` on <html> and define only the tokens that
+// should differ; anything left out keeps the default. The attribute
+// selector outranks the plain `:root` default, so partial themes work
+// without !important. Template at the foot of this block.
+//
+// Sizing is bound the same way. Type is rem, rooted on the page's own
+// font size (--eesha-font-size), so the panel scales with the page
+// font size instead of pinning numbers. --ui-font-size and
+// --space-unit are the two knobs a theme - or a future density setting
+// - turns.
+
+:root {
+
+    // ============ Knobs: everything below derives from these ============
+
+    // Type scale root. The page's UI font size (--eesha-font-size, 13px
+    // by default), multiplied by 1.15.
+    //
+    // Most of this file sizes text at --font-size-xs (0.85rem) or
+    // --font-size-sm (0.92rem). At 13px those two would draw at
+    // 11-12px, which reads too small. The 1.15 puts them back at about
+    // 13px and moves everything else up with them. Turn this one number
+    // to change the whole panel; it still follows the page font size,
+    // because it is a multiple of it, not a fixed value.
+    --ui-font-size: calc(var(--eesha-font-size, 13px) * 1.15);
+
+    // Density grid. Every gap, pad and control height is a multiple.
+    --space-unit: 4px;
+
+    font-size: var(--ui-font-size);
+
+    // ============ Typography ============
+
+    --font-family-default: var(--eesha-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+    --font-family-mono: var(--eesha-mono-font-family, "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace);
+    --font-weight-default: var(--eesha-font-weight, normal);
+
+    --font-size-xs: 0.85rem;
+    --font-size-sm: 0.92rem;
+    --font-size-base: 1rem;
+    --font-size-md: 1.15rem;
+    --font-size-lg: 1.38rem;
+    --font-size-xl: 1.7rem;
+
+    // ============ Icon sizes ============
+
+    // Drawn icons get their own scale, with the same step names as the
+    // type scale above: a rule asks for --icon-size-sm the way it asks
+    // for --font-size-sm and gets a size somebody chose, instead of a
+    // number typed next to that one <svg>. In rem for the same reason
+    // type is - an icon sits beside text, and one pinned to a pixel
+    // size drifts out of step the moment the user changes their font
+    // size or zooms.
+    //
+    // No `base` step, unlike type. 1rem is the reference for text
+    // because --ui-font-size is what sets it; an icon has no size it
+    // naturally falls back to, so `md` is simply the one most rules
+    // want, and it is what an icon gets when no step is named.
+    --icon-size-xs: 0.8rem;     // ~12px at the default 13px page font size
+    --icon-size-sm: 0.95rem;    // ~14px
+    --icon-size-md: 1.1rem;     // ~16px
+    --icon-size-lg: 1.35rem;    // ~20px
+    --icon-size-xl: 1.6rem;     // ~24px
+
+    // ============ Space and shape ============
+
+    --spacing-xs: var(--space-unit);
+    --spacing-sm: calc(var(--space-unit) * 2);
+    --spacing-md: calc(var(--space-unit) * 3);
+    --spacing-lg: calc(var(--space-unit) * 4);
+    --spacing-xl: calc(var(--space-unit) * 6);
+
+    // One height for every clickable control - chips, buttons, the task
+    // play glyph - so the rows they sit in share a rhythm instead of
+    // each inventing its own padding. 28px on the default grid: clear
+    // of the 24px WCAG 2.2 target-size floor, with room for a border.
+    --control-height: calc(var(--space-unit) * 7);
+
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+
+    --transition-fast: 120ms ease;
+    --transition-base: 200ms ease;
+
+    // ============ Surfaces and text ============
+
+    --color-bg: var(--eesha-bg, #1e1e1e);
+    --color-bg-elevated: var(--eesha-widget-bg, #252526);
+    --color-bg-hover: var(--eesha-list-hover-bg, #2a2d2e);
+    --color-bg-active: var(--eesha-list-selected-inactive-bg, #37373d);
+    // The picked row of a rail. The focused-list selection, not the
+    // inactive one: on a rail that already sits on the elevated surface the
+    // inactive grey is almost the same shade and the pick would not show.
+    --color-bg-selected: var(--eesha-list-selected-bg, #04395e);
+    --color-fg-selected: var(--eesha-list-selected-text, #ffffff);
+
+    --color-fg: var(--eesha-text, #d4d4d4);
+    --color-fg-muted: var(--eesha-text-muted, #9d9d9d);
+
+    --color-border: var(--eesha-border, #3c3c3c);
+    --color-border-subtle: var(--eesha-widget-border, rgba(128, 128, 128, 0.35));
+    // Divider between log lines. Cut from the text colour, not the panel
+// border: that border is a fixed grey picked to sit beside a panel,
+// and on the log background it all but vanishes. A quarter-strength
+// foreground is a visible step off any background the theme uses.
+    --color-log-divider: color-mix(in srgb, var(--color-fg) 25%, transparent);
+    // An edge that has to show on any theme: the compose box, the
+    // question card, and the line between the thread and its foot. The
+    // panel border is a fixed grey picked for the edge of a panel - in a
+    // light theme it is close to white, which is no edge at all. Cut
+    // from the text colour instead, so it is always a step off the surface.
+    --color-border-strong: color-mix(in srgb, var(--color-fg) 35%, transparent);
+    --color-primary: var(--eesha-focus, #3794ff);
+    --color-link: var(--eesha-link, #3794ff);
+    // Bound to a purple that is always a distinct hue. A var() fallback
+    // only applies when the variable is missing, so this must not be
+    // bound to a variable that can be set to the plain text colour.
+    --color-keyword: var(--eesha-purple, #c586c0);
+
+    // Its own token, though it tracks --color-primary by default: focus
+    // is the one ring that must stay visible against any surface, so a
+    // theme has to be able to move it without moving the accent.
+    --color-focus: var(--eesha-focus, #3794ff);
+
+    // ============ Controls ============
+
+    // The prominent action. This pair is the one colour combination a
+    // theme is obliged to keep legible, which a hand-picked green is
+    // not - #2ea043 under #fff is 3.4:1, below AA.
+    --color-action-bg: var(--eesha-button-bg, #0e639c);
+    --color-action-fg: var(--eesha-button-text, #ffffff);
+    --color-action-bg-hover: var(--eesha-button-bg-hover, #1177bb);
+
+    // A field you type into, which the theme colours apart from the
+    // surface behind it - a text box painted the page background reads
+    // as a label rather than as something that takes typing.
+    --color-bg-input: var(--eesha-input-bg, var(--color-bg));
+    --color-fg-input: var(--eesha-input-text, var(--color-fg));
+    --color-border-input: var(--eesha-input-border, var(--color-border));
+
+    // ============ Status ============
+
+    --color-success: var(--eesha-green, #3fb950);
+    --color-warning: var(--eesha-yellow, #d29922);
+    --color-error: var(--eesha-red, #f85149);
+    --color-info: var(--eesha-blue, #58a6ff);
+
+    // Ink on a saturated status fill. The page background follows the
+    // theme's own light or dark look, so it stays the opposite of
+    // whatever the fill is.
+    --color-status-ink: var(--eesha-bg, #1e1e1e);
+
+    // Run map lines. Their own tokens rather than the status colours
+    // above: they have to hold up as thick strokes and as small dots at
+    // the same time.
+    --map-pending: var(--eesha-text-muted, #7d8590);
+    --map-running: var(--eesha-blue, #2f81f7);
+    --map-success: var(--eesha-green, #2ea043);
+    --map-failed: var(--eesha-red, #e5534b);
+    --map-skipped: var(--eesha-text-disabled, #6e7681);
+    --map-waiting: var(--eesha-yellow, #d29922);
+
+    // A problem is not a status - the step has not run yet and may
+// never. Its own colour so it never reads as "this failed".
+    --map-problem: var(--eesha-warning, #d29922);
+    --map-problem-error: var(--eesha-error, #e5534b);
+}
+
+// Native controls follow the theme. Chromium paints the parts it owns -
+// a select's open list, a checkbox, a scrollbar - from `color-scheme`,
+// not from the page's colours, so without this a dropdown in a dark
+// theme opens as a white box.
+body.eesha-light,
+body.eesha-high-contrast-light {
+    color-scheme: light;
+}
+
+body.eesha-dark,
+body.eesha-high-contrast {
+    color-scheme: dark;
+}
+
+// High contrast, light and dark.
+//
+// The theme's colours already arrive through the bindings above; what
+// HC needs on top is that meaning lives in borders, not tinted fills,
+// and that elevated surfaces stop pretending to be a different shade.
+body.eesha-high-contrast,
+body.eesha-high-contrast-light {
+    --color-border: var(--eesha-contrast-border, currentColor);
+    --color-border-subtle: var(--eesha-contrast-border, currentColor);
+    --color-log-divider: var(--color-border);
+    --color-border-strong: var(--color-border);
+    --color-bg-elevated: var(--color-bg);
+}

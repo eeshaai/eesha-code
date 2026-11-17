@@ -1,0 +1,90 @@
+name: CI
+
+# Type check, build and unit tests, on every push and pull request.
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer commit makes an older run pointless, so stop the older one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  checks:
+
+    # Windows, because the code is written and run on Windows first: the
+    # pwsh plugin starts a real PowerShell, and the Copilot CLI is found
+    # through PATHEXT. Switch to ubuntu-latest on a branch if minutes cost
+    # too much, and read what breaks.
+    runs-on: windows-latest
+
+    steps:
+
+      - uses: actions/checkout@v5
+
+      # The UI library (SubModules/ui-lib) is the private repo
+      # eeshaai/ui-lib. The run's own token cannot read it, so it is
+      # fetched with a read-only deploy key kept in the secret
+      # UI_LIB_DEPLOY_KEY. The build compiles the library from source and
+      # fails without it.
+      - name: Fetch the UI library
+        shell: bash
+        env:
+          UI_LIB_DEPLOY_KEY: ${{ secrets.UI_LIB_DEPLOY_KEY }}
+        run: |
+          if [ -z "$UI_LIB_DEPLOY_KEY" ]; then
+            echo "::error::The secret UI_LIB_DEPLOY_KEY is missing. Add the private half of eeshaai/ui-lib's read-only deploy key as a repository secret with that name."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$UI_LIB_DEPLOY_KEY" > ~/.ssh/ui_lib
+          chmod 600 ~/.ssh/ui_lib
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          git config --global url."git@github.com:eeshaai/ui-lib".insteadOf "https://github.com/eeshaai/ui-lib"
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/ui_lib -o IdentitiesOnly=yes" git submodule update --init SubModules/ui-lib
+
+      # 22 matches local development. The run store uses node:sqlite,
+      # which needs Node 22.5 or newer.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      # npm ci, not npm install: the lockfile is the input.
+      - name: Install
+        run: npm ci
+
+      # The server and shared code, then the page.
+      - name: Type check
+        run: npm run typecheck
+
+      # Before the tests, because the plugin tests start the built
+      # dist/pluginWorker.js as a real child process.
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npx vitest run --coverage
+
+      # The HTML coverage report, for when a number looks wrong.
+      - name: Keep the coverage report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+          if-no-files-found: ignore

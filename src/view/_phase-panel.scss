@@ -1,0 +1,343 @@
+@use "scale" as *;
+
+// The spec panel's layout, and any other panel whose rows each bring
+// their own tabs. Column, then row: header across the top, rail and
+// pane side by side under it. Exactly the viewport, with no scrolling
+// of its own - the rail and each tab's content scroll.
+.phase-panel {
+
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+
+    &__header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-lg);
+        padding: var(--spacing-sm) var(--spacing-lg);
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-bg-elevated);
+    }
+
+    &__header-main {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    // What happens next - one primary button, at the end of the bar where
+    // the eye lands after the title.
+    &__actions {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+    }
+}
+
+// "drafting design…" beside Stop, in the header's own muted voice.
+.sdd-view__doing {
+    font-size: var(--font-size-base);
+    color: var(--color-fg-muted);
+}
+
+.phase-panel {
+
+    &__body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+    }
+
+    // Sized for a phase name and a Start button, no more - the rail is
+    // phases only, and a wider column would be empty.
+    &__rail {
+        flex: 0 0 auto;
+        min-width: 0;
+        overflow: auto;
+        border-right: 1px solid var(--color-border);
+        background: var(--color-bg-elevated);
+    }
+
+    // A workflow rail is a tree of stages and steps, so it needs more room
+    // than a spec's handful of phase names.
+    // Its width when the panel has no drag bars. With them, the UI
+    // library's split sizes the column instead - see SplitColumns.
+    &__body > &__rail {
+        width: space(52);
+    }
+
+    &--wide .phase-panel__body > .phase-panel__rail {
+        width: space(72);
+    }
+
+    &__pane {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+    }
+
+    // The UI library's Tabs: the tab row, then the open tab's content,
+    // taking the height the pane has left. The content draws its own
+    // spacing, so the library's panel padding is dropped.
+    &__tabs {
+        flex: 1;
+        min-height: 0;
+        height: auto;
+    }
+
+    &__tabs .ee-tabs__panel {
+        padding: 0;
+    }
+
+    // The tab names, then the open tab's file, then its tools - one row. Wraps onto a second line on a narrow panel
+    // rather than hiding anything.
+    &__tabs--row .ee-tabs__list {
+        flex-wrap: wrap;
+        align-items: center;
+        column-gap: var(--spacing-md);
+        padding-right: var(--spacing-sm);
+    }
+
+    &__tabs--row .ee-tabs__extras {
+        flex: 1 1 auto;
+        column-gap: var(--spacing-md);
+    }
+
+    &__tab-info {
+        flex: 1 1 12rem;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        column-gap: var(--spacing-sm);
+    }
+
+    &__tab-tools {
+        flex: 0 0 auto;
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+    }
+
+    // The open tab's file and tools, across the whole bottom of the panel
+    // (the spec panel's `footer`). Always one row high, empty or not, so
+    // the content above does not jump as tabs change. The file takes the
+    // left and the tools the right, the same as in the tab row.
+    &__footer {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        column-gap: var(--spacing-md);
+        min-height: space(8);
+        padding: var(--spacing-xs) var(--spacing-lg);
+        border-top: 1px solid var(--color-border);
+        background: var(--color-bg-elevated);
+    }
+
+    // The panel's own controls, at the far right. Pushed there on its own
+    // when the tab brings no tools; after tools, which are already pushed
+    // right, it sits beside them behind a thin line.
+    &__footer-end {
+        flex: 0 0 auto;
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+    }
+
+    &__tab-tools + &__footer-end {
+        margin-left: 0;
+        padding-left: var(--spacing-md);
+        border-left: 1px solid var(--color-border);
+    }
+
+    // Full screen: the tab row, the tab's content and the footer. The header,
+    // the card and the sessions pane are hidden, not removed, so a draft
+    // typed in the sessions pane is still there on the way back.
+    &--full &__header,
+    &--full &__card,
+    &--full &__aside,
+    &--full &__resizer {
+        display: none;
+    }
+
+    // Above the tabs: what the panel is doing or asking right now.
+    // No edge of its own: what goes in here draws one, and a gate's is
+    // its own colour. Two borders under one card read as two cards.
+    &__card {
+        flex: 0 0 auto;
+    }
+}
+
+.phase-card {
+
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+
+    &__text {
+        flex: 1 1 auto;
+        font-size: var(--font-size-base);
+        line-height: 1.4;
+        color: var(--color-fg-muted);
+    }
+
+    &--gate {
+        border-left: 3px solid var(--map-waiting);
+    }
+
+    &--gate .phase-card__text {
+        color: var(--color-fg);
+    }
+}
+
+// The open tab's content. Each tab's own root fills this and scrolls
+// inside it.
+.phase-panel {
+
+    &__content {
+        position: relative;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+}
+
+// The column on the right of the tabs - the spec panel's sessions pane.
+// Its width is the default until a bar drags it; the inline width then
+// wins over this one.
+.phase-panel__aside {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid var(--color-border);
+    background: var(--color-bg);
+}
+
+// Its width when the panel has no drag bars. With them, the UI
+// library's split sizes the column instead - see SplitColumns.
+.phase-panel__body > .phase-panel__aside {
+    width: space(96);
+}
+
+// The columns in the UI library's ResizableSplit - see SplitColumns in
+// PhasePanel.tsx. The split sizes each column in percent; the columns
+// fill what they are given and scroll inside themselves.
+.phase-panel__body > .resizable-split {
+
+    flex: 1;
+    min-width: 0;
+
+    // The bar draws the line between columns, so the columns drop
+    // their own.
+    .phase-panel__rail {
+        border-right: none;
+    }
+
+    .phase-panel__aside {
+        border-left: none;
+    }
+
+    // A one-pixel line, but a wider strip to grab. Coloured while the
+    // pointer is on it. `touch-action: none` so a finger's drag is not
+    // taken as a scroll.
+    > .resizer {
+        width: 5px;
+        margin: 0 -2px;
+        z-index: $z-raised;
+        touch-action: none;
+        background: linear-gradient(var(--color-border), var(--color-border)) center / 1px 100% no-repeat;
+        transition: background 0.1s;
+
+        &:hover {
+            background: var(--color-focus);
+        }
+    }
+}
+
+// The spec's phases as one row of steps in the header - see
+// `PhaseSteps`. Wraps onto another line on a narrow panel; never hides
+// a name.
+.phase-steps {
+
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+
+    &__pick {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        min-height: var(--control-height);
+        padding: 0 var(--spacing-md);
+        border: none;
+        border-radius: var(--radius-md);
+        background: transparent;
+        color: inherit;
+        font-family: inherit;
+        font-size: var(--font-size-base);
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:hover {
+            background: var(--color-bg-hover);
+        }
+    }
+
+    // The open phase: the rail's own selected look, with the line under
+    // it rather than beside it, since the steps run across.
+    &__pick--on {
+        background: var(--color-bg-selected);
+        color: var(--color-fg-selected);
+        font-weight: 700;
+        box-shadow: inset 0 -2px 0 var(--color-primary);
+    }
+
+    &__sep {
+        color: var(--color-fg-muted);
+        opacity: 0.6;
+    }
+}
+
+// The box a Logs tab's panel fills - the same in both panels, since
+// both tabs are the log and nothing else. LogPanel owns its own
+// scrolling and typography inside it.
+.log-tab {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+// The Source tab: which file and line, then the step's YAML.
+.step-source {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+
+    &__where {
+        margin-bottom: var(--spacing-sm);
+        color: var(--color-fg-muted);
+    }
+}
+
+// A plugin's page - see `PluginAppTab`. The iframe is the whole tab.
+.plugin-app {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    border: 0;
+    background: transparent;
+}

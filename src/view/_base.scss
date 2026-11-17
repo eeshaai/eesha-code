@@ -1,0 +1,81 @@
+// ------------------------------------------------------------------
+// THEME TEMPLATE
+// ------------------------------------------------------------------
+// Copy, rename, define what should differ, drop the rest. Activate by
+// setting data-eesha-theme on <html> from the page entry point.
+//
+// :root[data-eesha-theme="midnight"] {
+//     --ui-font-size: 14px;
+//     --space-unit: 5px;
+//     --color-bg: #0d1117;
+//     --color-bg-elevated: #161b22;
+//     --color-fg: #e6edf3;
+//     --color-action-bg: #238636;
+//     --color-action-fg: #ffffff;
+// }
+//
+// The full contract a theme may set: --ui-font-size, --space-unit,
+// --font-family-default, --font-family-mono, --font-weight-default,
+// --font-size-{xs,sm,base,md,lg,xl}, --spacing-{xs,sm,md,lg,xl},
+// --control-height, --radius-{sm,md,lg}, --transition-{fast,base},
+// --color-bg, --color-bg-{elevated,hover,active}, --color-fg,
+// --color-fg-muted, --color-border, --color-border-subtle,
+// --color-primary, --color-focus, --color-link, --color-keyword,
+// --color-action-{bg,fg,bg-hover}, --color-status-ink,
+// --color-bg-input, --color-fg-input, --color-border-input,
+// --color-{success,warning,error,info},
+// --map-{pending,running,success,failed,skipped,waiting},
+// --map-problem, --map-problem-error.
+
+body {
+    // No default margin: the run view is height:100vh, and 8px of body
+    // margin around it would add an outer scrollbar with nothing to
+    // scroll to.
+    margin: 0;
+    font-family: var(--font-family-default);
+    font-weight: var(--font-weight-default);
+    font-size: var(--font-size-base);
+    // The UI library sets 1.5 on html and body. Every row height in this
+    // panel is sized against the browser's normal line height, so the
+    // body keeps that and a library component sets its own if it needs
+    // more.
+    line-height: normal;
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+}
+
+code,
+pre {
+    font-family: var(--font-family-mono);
+}
+
+// Keyboard focus, once, for everything.
+//
+// Most controls here are transparent-background borderless buttons, so
+// without a ring, tabbing through the panel would move an invisible
+// cursor. `:focus-visible` rather than `:focus` keeps the ring off mouse
+// clicks.
+//
+// Outline is reserved for focus and nothing else. Selected-state styling
+// (the chip you are currently viewing, the task whose log is open) uses
+// borders and fills, so "focused" and "selected" never look alike.
+:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+// Reachable by screen reader, not by eye - carries state that the visual
+// design encodes as colour or a glyph.
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+// ---------- Log lines and status glyphs ----------

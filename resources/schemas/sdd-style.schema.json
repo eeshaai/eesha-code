@@ -1,0 +1,444 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://eesha.ai/schemas/sdd-style.schema.json",
+    "title": "Eesha Code SDD style",
+    "description": "A spec-driven process: its phases, what each writes, and what New Spec offers. Authoring one is how you add your own process - the built-in styles are written in exactly this format.",
+    "type": "object",
+    "required": [
+        "schema",
+        "id",
+        "name",
+        "desc",
+        "specTypes"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+        "presets": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "label",
+                    "text"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "description": "The menu item. Unique within the list."
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "What lands in the compose box when this item is picked. Read and edited there before Send; sent as the note of a revise pass. May read the spec variables - ${{ spec.dir }}, ${{ spec.path }}, ${{ spec.name }}, ${{ spec.type }}, ${{ spec.stage }} - answered when the phase is drawn."
+                    }
+                }
+            },
+            "defaultSnippets": [
+                {
+                    "label": "preset",
+                    "description": "One starting sentence for the revise box.",
+                    "body": [
+                        {
+                            "label": "$1",
+                            "text": "$2"
+                        }
+                    ]
+                }
+            ]
+        },
+        "ghcpArgs": {
+            "type": "object",
+            "description": "The args only a ghcp session takes, offered when the block runs on ghcp. Suggestions, not a whitelist: ai@1 passes every key through, so a name here is never required and a name missing here is never an error.",
+            "properties": {
+                "reasoningEffort": {
+                    "type": "string",
+                    "description": "How hard the model thinks, where the provider supports it."
+                }
+            }
+        },
+        "providerBlocks": {
+            "type": "object",
+            "description": "Overrides for one runtime, keyed by its id - e.g. ghcp: { reasoningEffort: high }. Every runtime takes the flat keys of this ai: block; a key here replaces one of them for that runtime only. A runtime with nothing to override needs no entry. Each id must be in settings.json's ai.providers (or a known runtime when that list is left out), or the phase fails naming the allowed ones. A style cannot add a runtime.",
+            "properties": {
+                "ghcp": {
+                    "allOf": [
+                        { "$ref": "#/$defs/providerBlock" },
+                        { "$ref": "#/$defs/ghcpArgs" }
+                    ]
+                }
+            },
+            "additionalProperties": {
+                "$ref": "#/$defs/providerBlock"
+            },
+            "defaultSnippets": [
+                {
+                    "label": "ghcp + kiro-cli",
+                    "description": "Copilot's own options, and Kiro's model.",
+                    "body": {
+                        "ghcp": {
+                            "model": "$1"
+                        },
+                        "kiro-cli": {
+                            "model": "$2"
+                        }
+                    }
+                }
+            ]
+        },
+        "providerBlock": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "description": "Model id for this runtime, or 'auto' to let it pick."
+                }
+            },
+            "not": {
+                "anyOf": [
+                    { "required": ["provider"] },
+                    { "required": ["uses"] },
+                    { "required": ["providers"] }
+                ]
+            }
+        },
+        "aiArgs": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "description": "Which vendor the plugin runs against. Defaults to ai@1's own manifest value."
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Model id, or 'auto' to let the provider pick."
+                },
+                "providers": {
+                    "$ref": "#/$defs/providerBlocks"
+                },
+                "systemInstructions": {
+                    "type": "string",
+                    "description": "Standing instruction for every turn, appended to the runtime's own guardrails - never replacing them, so its safety instructions always survive alongside this. Either the text itself, or 'file://' followed by a full path, built from this build's own path variables, naming a file to read instead - resolved once, when the session starts.",
+                    "defaultSnippets": [
+                        {
+                            "label": "text",
+                            "description": "The instruction, written here.",
+                            "body": "$1"
+                        },
+                        {
+                            "label": "file://",
+                            "description": "A file, read once when the session starts.",
+                            "body": "file://${{ workspaceFolder }}/$1"
+                        }
+                    ]
+                },
+                "mcp": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Which of settings.json's MCP servers this phase gets, and which of their tools. Both are allowlists and both are optional: no 'servers' means every declared server, no 'tools' means every tool of each selected server. Replaces the ai@1 default's mcp: whole, not key by key - a phase that says mcp: says all of it. A name settings.json does not declare fails the phase, naming the declared ones. A server disabled there stays out even when named here. Say { servers: [] } for a phase that needs no server at all - requirements usually does not.",
+                    "properties": {
+                        "servers": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "Server keys as declared under ai.mcpServers in settings.json, e.g. [ado, github]. Absent means every declared server. Empty means none."
+                        },
+                        "tools": {
+                            "type": "object",
+                            "description": "Bare tool names per server key, e.g. { ado: [wit_get_work_item] }. Absent means every tool of each selected server. A server named here must also be in 'servers' when 'servers' is given.",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "required": [
+                            "provider"
+                        ],
+                        "properties": {
+                            "provider": {
+                                "const": "ghcp"
+                            }
+                        }
+                    },
+                    "then": {
+                        "$ref": "#/$defs/ghcpArgs"
+                    }
+                },
+                {
+                    "if": {
+                        "not": {
+                            "required": [
+                                "provider"
+                            ]
+                        }
+                    },
+                    "then": {
+                        "$ref": "#/$defs/ghcpArgs"
+                    }
+                }
+            ],
+            "defaultSnippets": [
+                {
+                    "label": "model",
+                    "description": "The phase that needs more than the default.",
+                    "body": {
+                        "model": "$1"
+                    }
+                },
+                {
+                    "label": "mcp",
+                    "description": "Only these MCP servers for this phase. Empty list for none.",
+                    "body": {
+                        "mcp": {
+                            "servers": [
+                                "$1"
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "properties": {
+        "schema": {
+            "const": 1,
+            "description": "Style schema version."
+        },
+        "id": {
+            "type": "string",
+            "description": "Must equal the folder name - the folder is the identity, this field asserts it. A style id names the process it implements, so 'kiro' and 'spec-kit'."
+        },
+        "name": {
+            "type": "string",
+            "description": "Shown in pickers."
+        },
+        "desc": {
+            "type": "string",
+            "description": "One line."
+        },
+        "specTypes": {
+            "type": "array",
+            "minItems": 1,
+            "description": "What New Spec offers. The spec type owns the order: 'stages' below is a pool, and each type arranges what it needs. A single entry means no question is asked.",
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "label",
+                    "stages"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Shown in the picker."
+                    },
+                    "stages": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Ordered stage ids - the drafting phases, in order. This is the pipeline between the gates: idea opens it and implement closes it, and neither is listed. A bug fix that skips design is expressed here and nowhere else."
+                    }
+                }
+            }
+        },
+        "blockOnOpenQuestions": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether a question nobody has answered stops the phase after it. Defaults to true. A phase writes what it could not settle under `## Open Questions` - first in the document, one list item per question carrying a **QN-n** id - and an answer is an indented A: line under it. A question with an answer line does not block; a question without one refuses the next phase's button, Start tasks and the per-task controls, naming the document and the ids. The test is the answer rather than the section, so the block lifts the moment someone types the answer into the document rather than waiting for a pass to tidy it away into `## Answered Questions`. Every drafting document is checked, not only the one the press approves; the idea document is exempt because no model runs it. Set false and the sections are still written and still travel in git - nothing acts on them."
+        },
+        "attachments": {
+            "oneOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            ],
+            "description": "Extra files handed to every stage that runs a model, on top of whatever that stage attaches itself - a house style guide, a product glossary, whatever the whole process should have read rather than one phase of it. Same delivery and the same rule as a stage's own attachments: attached rather than pasted in, paths relative to the workspace, a ${{ }} expression resolved first, and a path outside the repository refused. May also read the spec variables - ${{ spec.dir }}, ${{ spec.path }}, ${{ spec.name }}, ${{ spec.type }}, ${{ spec.stage }} - which are answered when a phase is assembled. Every file must exist once resolved - the phase fails naming the one that does not. Merged ahead of a stage's own list, so this is the more general reference and a stage's own the more specific.",
+            "defaultSnippets": [
+                {
+                    "label": "one file",
+                    "description": "A single path, relative to the repository.",
+                    "body": "docs/glossary.md"
+                },
+                {
+                    "label": "several",
+                    "description": "A list of paths, relative to the repository.",
+                    "body": [
+                        "docs/house-style.md",
+                        "docs/glossary.md"
+                    ]
+                },
+                {
+                    "label": "${{ workspaceFolder }}",
+                    "description": "The workspace's main folder.",
+                    "body": "${{ workspaceFolder }}/docs/glossary.md"
+                }
+            ]
+        },
+        "specsDir": {
+            "type": "string",
+            "description": "Where this style's spec folders live, written the way sdd.specsDir is: relative to the workspace, or absolute. New Spec creates this style's specs here, and a folder here with no style: tag is read by this style. The spec list shows specs from here and from sdd.specsDir together. Spec names must be unique across all spec folders. Left out, this style's specs go under sdd.specsDir with every other style's."
+        },
+        "stages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Optional, and usually absent. One entry per stage that differs from what a stage of that name would be anyway - a phase called design writes design.md, runs prompts/design.md, and parks for a human without being told to. Order here means nothing; a spec type's list is the pipeline.",
+            "items": {
+                "type": "object",
+                "required": [
+                    "id"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Also the session name and the key for format.house and config's per-stage AI settings."
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "What a person sees on the chip. Defaults to the id. Separate because the id is the session name, the format.house key and the per-stage settings key - so a team that wants its own word for a phase changes what is shown rather than moving all three."
+                    },
+                    "actionable": {
+                        "type": "boolean",
+                        "description": "This stage's document is worked from its own page: every checkbox row gets a live box and a play button, and the implementation is started from there. The output gate is implied after it and never shown, so a spec type ending in this stage lists no 'implement'. Only on the last drafting stage of a pipeline; never on a gate."
+                    },
+                    "prefix": {
+                        "type": "string",
+                        "pattern": "^[A-Z][A-Za-z0-9]+$",
+                        "description": "The id this stage's own numbered items are cited by - 'Req' for requirements.md's 'Req-3', 'Gap' for a gap analysis's 'Gap-11'. Optional: a stage with none still declares ids the grammar's own way (an id in the heading, first). Uppercase first letter, letters and digits only, because it is written straight into an id with a hyphen and a number after it. At least two characters: 'F-1' tells a reader nothing, 'FT-1' does. Refused on the input and output gates, which write no numbered document."
+                    },
+                    "produces": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        ],
+                        "description": "Artifacts that must all exist for the stage to be satisfied. Defaults to one document named after the stage - design writes design.md. Forbidden on the output gate, which is terminal: git is that phase's record, not a file in the spec folder."
+                    },
+                    "instructions": {
+                        "type": "string",
+                        "description": "The instructions this phase runs on, owned by the repository - a path relative to the workspace, replacing the style's own instructions for this stage. Left out, the stage runs instructions/<id>.md from the style folder, which a workspace or profile copy of that file can shadow per file. This is the whole prompt, not a shape it fills in: a phase runs one set of instructions, from whoever owns them. Must land inside the repository, so a teammate's checkout resolves the same file: a ${{ }} expression is resolved first, and an absolute path is accepted only when it is under the workspace root - anything outside it is refused. May also read the spec variables - ${{ spec.dir }}, ${{ spec.path }}, ${{ spec.name }}, ${{ spec.type }}, ${{ spec.stage }} - which are answered when the phase is assembled, so docs/types/${{ spec.type }}.md runs different instructions for a bug and a feature. Refused on the input gate, which runs no model.",
+                        "defaultSnippets": [
+                            {
+                                "label": "${{ workspaceFolder }}",
+                                "description": "The workspace's main folder.",
+                                "body": "${{ workspaceFolder }}/docs/prompts/design.md"
+                            },
+                            {
+                                "label": "${{ workspaceConfig }}",
+                                "description": "<workspaceFolder>/.eesha.",
+                                "body": "${{ workspaceConfig }}/docs/prompts/design.md"
+                            },
+                            {
+                                "label": "${{ home }}",
+                                "description": "The person's home directory.",
+                                "body": "${{ home }}/docs/prompts/design.md"
+                            },
+                            {
+                                "label": "${{ cwd }}",
+                                "description": "The working directory this level runs in.",
+                                "body": "${{ cwd }}/docs/prompts/design.md"
+                            }
+                        ]
+                    },
+                    "attachments": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        ],
+                        "description": "Extra files handed to this phase beside its instructions - an API contract, a house style guide, a glossary. Attached, so the session opens them, the same way the phase prompt is; the spec's own documents are named by path instead, because they are the pipeline's output rather than reference material. Paths are relative to the workspace, under the same rule as instructions: the file travels in git with the style that points at it, a ${{ }} expression is resolved first, and a path outside the repository is refused. May also read the spec variables - ${{ spec.dir }}, ${{ spec.path }}, ${{ spec.name }}, ${{ spec.type }}, ${{ spec.stage }} - which are answered when the phase is assembled, so ${{ spec.dir }}/api.md attaches a file that belongs to this spec alone. Every file must exist once resolved - the phase fails naming the one that does not, because a reference nobody notices is missing is worse than a phase that will not start. Refused on the input gate, which runs no model.",
+                        "defaultSnippets": [
+                            {
+                                "label": "one file",
+                                "description": "A single path, relative to the repository.",
+                                "body": "docs/api/contract.md"
+                            },
+                            {
+                                "label": "several",
+                                "description": "A list of paths, relative to the repository.",
+                                "body": [
+                                    "docs/api/contract.md",
+                                    "docs/glossary.md"
+                                ]
+                            },
+                            {
+                                "label": "${{ workspaceFolder }}",
+                                "description": "The workspace's main folder.",
+                                "body": "${{ workspaceFolder }}/docs/api/contract.md"
+                            },
+                            {
+                                "label": "${{ spec.dir }}",
+                                "description": "This spec's own folder - a reference file that belongs to one spec rather than to the process.",
+                                "body": "${{ spec.dir }}/api.md"
+                            },
+                            {
+                                "label": "${{ spec.type }}",
+                                "description": "The spec type - one reference file per kind of work.",
+                                "body": "docs/types/${{ spec.type }}.md"
+                            }
+                        ]
+                    },
+                    "ai": {
+                        "allOf": [
+                            { "$ref": "#/$defs/aiArgs" }
+                        ],
+                        "description": "What this phase runs on - the plugin args the process itself has an opinion about, because only a style knows which of its phases is the hard one. Merged per key over the style's own top-level 'ai:' (see below), which is itself merged over the plugin's own defaults in settings.json - three layers, this the last word, so a stage naming only reasoningEffort keeps whichever model the other two set. Open, because the plugin declares its own input list; the properties here are suggestions, not a whitelist. Refused here: 'uses' (which plugin runs a phase is the team's call - a style naming one would not run for a team on a different plugin), and the five the engine writes over - prompt (use the stage's instructions:), attachments (use the stage's attachments:), title, target and detach. May read the spec variables - ${{ spec.dir }}, ${{ spec.path }}, ${{ spec.name }}, ${{ spec.type }}, ${{ spec.stage }} - which are answered when the phase is assembled; the same expressions in settings.json are refused, because a value that changes per spec is the process's business rather than the deployment's. Refused on the input gate, which runs no model."
+                    },
+                    "presets": {
+                        "allOf": [
+                            { "$ref": "#/$defs/presets" }
+                        ],
+                        "description": "Starting sentences for this phase's revise box - the split button beside Send in the AI Session tab. Picking one only fills the box; the person reads it, edits it and presses Send, and the text goes as the note of a revise pass. Added after the style's own top-level 'presets:'. Declared here or there, the two built-in sentences ('Revise (Prompt changed)', 'Revise (Prev doc(s) changed)') are dropped; declared nowhere, they are what the menu shows. The 'with notes' item is always there when there are open notes. Refused on both gates: nothing runs the input gate, and the output gate writes no document to revise."
+                    }
+                }
+            }
+        },
+        "ai": {
+            "allOf": [
+                { "$ref": "#/$defs/aiArgs" }
+            ],
+            "description": "The plugin args every stage of this process starts from - the style-wide default. Same shape as a stage's own 'ai:', and merged the same way: per key, underneath a stage's own 'ai:', which is itself merged over the plugin's own defaults in settings.json. Write a house model or a standing systemInstructions here once instead of copying it onto every stage - the way the style's own 'attachments:' above already avoids repeating a style-wide file on every stage. Refused here: 'uses', for the same reason it is refused on a stage."
+        },
+        "presets": {
+            "allOf": [
+                { "$ref": "#/$defs/presets" }
+            ],
+            "description": "Starting sentences for every drafting phase's revise box, ahead of each stage's own 'presets:' - the split button beside Send in the AI Session tab. Same shape and same rules as a stage's list. Declared here, the two built-in sentences are dropped for every phase; declared only on a stage, for that stage alone; declared nowhere, they are what the menu shows. Write a house sentence once here instead of on every stage - the way the style's own 'attachments:' and 'ai:' already do."
+        }
+    }
+}

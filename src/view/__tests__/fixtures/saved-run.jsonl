@@ -1,0 +1,14 @@
+{"v":1,"kind":"open","runId":"sdd:.eesha/specs/demo","at":1790571600000}
+{"kind":"start","ownerId":"requirements","at":1790571600100}
+{"kind":"session","ownerId":"requirements","at":1790571601000,"sessionId":"s-ghcp-1","provider":"ghcp","model":"gpt-5"}
+{"kind":"prompt","at":1790571601100,"ownerId":"requirements","stream":"stdout","text":"Draft the requirements for the retry feature."}
+{"kind":"message","at":1790571630000,"ownerId":"requirements","stream":"stdout","text":"I have written the requirements."}
+{"kind":"notice","cost":[{"amount":1.25,"unit":"credits","runtime":"ghcp"}],"models":[{"model":"gpt-5","runtime":"ghcp","inputTokens":120000,"outputTokens":8000,"cost":[{"amount":1,"unit":"credits","runtime":"ghcp"}]},{"model":"claude-haiku-4-5","runtime":"ghcp","inputTokens":30000,"outputTokens":2000,"cost":[{"amount":0.25,"unit":"credits","runtime":"ghcp"}]}],"at":1790571630100,"ownerId":"requirements","stream":"system","text":"Turn finished - 1.25 credits\n"}
+{"kind":"notice","context":{"used":81378,"size":967000,"parts":[{"name":"System prompt","tokens":10505},{"name":"Tools","tokens":24455,"items":[{"name":"knowledge","tokens":1166}]},{"name":"Messages","tokens":46418}]},"at":1790571630200,"ownerId":"requirements","stream":"system","text":"Context 8% of 967k tokens used\n"}
+{"kind":"notice","account":{"plan":"KIRO PRO","resets":"2026-10-01","limits":[{"name":"Credits","used":1772,"limit":1000}]},"at":1790571630300,"ownerId":"requirements","stream":"system","text":"Account (a shape the panel does not draw)\n"}
+{"kind":"notice","cost":[{"amount":0.1,"unit":"credits"}],"at":1790571630400,"ownerId":"requirements","stream":"system","text":"Turn finished - 0.10 credits (no runtime recorded)\n"}
+{"kind":"prompt","at":1790571700000,"ownerId":"requirements","stream":"stdout","text":"Split story 2 in two."}
+{"kind":"notice","cost":[{"amount":0.5,"unit":"credits","runtime":"kiro-cli"}],"models":[{"model":"claude-sonnet-5","runtime":"kiro-cli","inputTokens":50000,"outputTokens":10000,"cost":[{"amount":0.5,"unit":"credits","runtime":"kiro-cli"}]}],"at":1790571720000,"ownerId":"requirements","stream":"system","text":"Turn finished - 0.50 credits\n"}
+{"kind":"notice","account":{"runtime":"kiro-cli","at":1790571720100,"rows":[{"key":"Plan","value":"KIRO PRO"},{"key":"Credits used","value":"412 of 1,000"},{"key":"Overage charge","value":"$0.00","money":true}]},"at":1790571720100,"ownerId":"requirements","stream":"system","text":"Account: Credits used 412 of 1,000\n"}
+{"kind":"notice","context":{"used":120000,"size":967000},"at":1790571720200,"ownerId":"requirements","stream":"system","text":"Context 12% of 967k tokens used\n"}
+{"kind":"end","ownerId":"requirements","at":1790571720300,"status":"success"}

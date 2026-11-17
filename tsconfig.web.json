@@ -1,0 +1,16 @@
+{
+    // The page, type-checked the way esbuild bundles it.
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "paths": {
+            "react": ["./node_modules/@types/react"],
+            "react/*": ["./node_modules/@types/react/*"],
+            "react-dom": ["./node_modules/@types/react-dom"],
+            "react-dom/*": ["./node_modules/@types/react-dom/*"]
+        }
+    },
+    "include": ["src/view", "src/web", "src/sdd/view", "src/types.d.ts"],
+    "exclude": []
+}

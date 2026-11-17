@@ -1,0 +1,43 @@
+@use "scale" as *;
+
+// The Data tab - what the run produced and what it was given, as a tree.
+//
+// Outputs are only one of the things a run holds, so they are shown
+// here beside the rest, not in a strip above the map.
+.data {
+
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-bottom: var(--spacing-md);
+
+    &__section {
+        border-bottom: 1px solid var(--color-border-subtle);
+    }
+
+    // The whole heading is the control, not a glyph beside it. A row of
+    // six of these is the tab at rest, so the target is the full width
+    // rather than the twelve pixels the arrow occupies.
+    //
+    // A library ghost button. It keeps the section-label type below
+    // (small caps, muted), because it reads as a heading, not a button.
+    &__panel {
+        padding: 0 var(--spacing-lg) var(--spacing-sm);
+    }
+}
+
+// A plugin's own tab - see `PluginUiPanel`. Scrolls like the data
+// tabs; a plugin's table has a header row, which the key/value table
+// does not.
+.plugin-ui {
+
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-bottom: var(--spacing-md);
+}
+
+// Where a section holds less than its title implies - see `vars`.
+.data__note {
+    margin-top: 2px;
+    font-size: var(--font-size-xs);
+    color: var(--color-fg-muted);
+}

@@ -1,0 +1,292 @@
+@use "scale" as *;
+
+// The Evaluator page - see EvalView.tsx. A column of cards: the setup
+// and the earlier runs, or one run's report.
+.evals {
+
+    display: flex;
+    flex-direction: column;
+    gap: space(3);
+    padding: space(4);
+    max-width: 1200px;
+    margin: 0 auto;
+    color: var(--color-fg);
+    font-size: var(--font-size-md);
+
+    h2,
+    h3 {
+        margin: 0 0 space(2);
+        font-weight: 500;
+    }
+
+    h2 { font-size: var(--font-size-lg); }
+
+    h3 {
+        font-size: var(--font-size-md);
+        margin-top: space(4);
+    }
+
+    code { font-family: var(--font-family-mono); }
+}
+
+.evals__card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-elevated);
+    padding: space(3) space(4);
+}
+
+.evals__top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: space(3);
+}
+
+.evals__title {
+    margin: 0 !important;
+    align-self: center;
+}
+
+.evals__field {
+    display: flex;
+    flex-direction: column;
+    gap: space(1);
+    min-width: 12rem;
+
+    > span {
+        font-size: var(--font-size-sm);
+        color: var(--color-fg-muted);
+    }
+}
+
+.evals__repeats { width: 5rem; }
+
+.evals__spacer { flex: 1 1 auto; }
+
+.evals__count {
+    font-size: var(--font-size-sm);
+    color: var(--color-fg-muted);
+    align-self: center;
+}
+
+.evals__muted {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+    font-weight: normal;
+}
+
+.evals__problem {
+    margin-top: space(2);
+    color: var(--color-error);
+    font-size: var(--font-size-sm);
+    white-space: pre-wrap;
+}
+
+.evals__error,
+.evals__note {
+    display: flex;
+    align-items: center;
+    gap: space(2);
+    padding: space(2) space(3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    font-size: var(--font-size-sm);
+}
+
+.evals__error {
+    border-color: var(--color-error);
+    color: var(--color-error);
+
+    > span { flex: 1 1 auto; }
+}
+
+.evals__heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-top: space(4);
+
+    h3 { margin: 0; }
+}
+
+.evals__links {
+    font-size: var(--font-size-sm);
+
+    a { color: var(--color-link); }
+}
+
+// The case list and the runtime rows: one grid each, so the columns line up.
+.evals__cases,
+.evals__rows {
+    display: grid;
+    align-items: center;
+    column-gap: space(2);
+    row-gap: space(1);
+    margin-top: space(1);
+}
+
+.evals__cases { grid-template-columns: 1.5rem 11rem minmax(0, 1fr) 4rem; }
+
+.evals__rows { grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr) minmax(8rem, 11rem) 2rem; }
+
+.evals__none { padding-left: space(1); }
+
+.evals__add {
+    display: flex;
+    gap: space(2);
+    margin-top: space(2);
+    padding-top: space(2);
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+.evals__metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: space(3);
+    margin: space(3) 0;
+}
+
+.evals__metric {
+    display: flex;
+    flex-direction: column;
+    gap: space(1);
+    padding: space(2) space(3);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-hover);
+
+    strong {
+        font-size: var(--font-size-lg);
+        font-weight: 500;
+    }
+}
+
+.evals__table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: space(2);
+    font-size: var(--font-size-sm);
+
+    th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--color-fg-muted);
+    }
+
+    th,
+    td {
+        padding: space(1.5) space(2);
+        border-bottom: 1px solid var(--color-border-subtle);
+        vertical-align: middle;
+    }
+}
+
+.evals__table--click tbody tr {
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible { background: var(--color-bg-hover); }
+}
+
+// The best value of a column in the summary table.
+.evals__best {
+    color: var(--color-success);
+    font-weight: 600;
+}
+
+.evals__tag {
+    display: inline-block;
+    margin-left: space(2);
+    padding: 0 space(1.5);
+    border-radius: $radius-pill;
+    border: 1px solid var(--color-border);
+    font-size: var(--font-size-xs);
+    color: var(--color-fg-muted);
+}
+
+.evals__tag--passed { color: var(--color-success); border-color: var(--color-success); }
+.evals__tag--failed,
+.evals__tag--error { color: var(--color-error); border-color: var(--color-error); }
+.evals__tag--running,
+.evals__tag--testing { color: var(--color-info); border-color: var(--color-info); }
+
+// One cell of the runtime-by-case grid: a button, coloured by how it went.
+.evals__cell {
+    width: 100%;
+    padding: space(1) space(2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: var(--color-bg-hover);
+    color: var(--color-fg);
+    font: inherit;
+    text-align: center;
+    cursor: pointer;
+
+    &:hover { border-color: var(--color-border-strong); }
+}
+
+.evals__cell--open { border-color: var(--color-focus); }
+
+.evals__cell--passed { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 14%, transparent); }
+.evals__cell--partial { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 14%, transparent); }
+.evals__cell--failed { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 14%, transparent); }
+.evals__cell--running { color: var(--color-info); background: color-mix(in srgb, var(--color-info) 12%, transparent); }
+.evals__cell--waiting,
+.evals__cell--stopped { color: var(--color-fg-muted); }
+
+.evals__detail {
+    margin-top: space(3);
+    padding-top: space(2);
+    border-top: 1px solid var(--color-border);
+}
+
+.evals__attempt {
+    padding: space(2) 0;
+
+    & + & { border-top: 1px solid var(--color-border-subtle); }
+
+    pre {
+        margin: space(1) 0 0;
+        padding: space(2);
+        max-height: 20rem;
+        overflow: auto;
+        border-radius: var(--radius-md);
+        background: var(--color-bg);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        white-space: pre-wrap;
+    }
+
+    summary { cursor: pointer; }
+}
+
+.evals__attempt-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: space(3);
+    font-size: var(--font-size-sm);
+
+    .evals__tag { margin-left: 0; }
+}
+
+.evals__failures,
+.evals__reply {
+    margin-top: space(2);
+    font-size: var(--font-size-sm);
+
+    > details { margin-top: space(1); }
+}
+
+// A row's model picker with its refresh button beside it.
+.evals__model {
+    display: flex;
+    align-items: center;
+    gap: space(1);
+    min-width: 0;
+
+    > :first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+}

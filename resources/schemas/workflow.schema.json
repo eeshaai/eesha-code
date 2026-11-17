@@ -1,0 +1,1007 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://eesha.ai/schemas/workflow.schema.json",
+    "title": "Eesha Code workflow",
+    "description": "Orchestration as stages holding tasks in order. A stage is a barrier: everything in it finishes before the next starts. Everything is sequential - the list order is the execution order.",
+    "type": "object",
+    "required": [
+        "version"
+    ],
+    "properties": {
+        "version": {
+            "const": 1,
+            "description": "The schema this file is written for. Required here and optional in a tasks.yml."
+        },
+        "name": {
+            "type": "string",
+            "description": "Shown wherever this workflow is listed.",
+            "default": "Unnamed Workflow"
+        },
+        "engine": {
+            "type": "string",
+            "description": "Which machinery runs this file. Every declared name runs the stages/tasks engine; a tasks.yml always runs the inline one and does not declare it.",
+            "default": "default"
+        },
+        "desc": {
+            "type": "string",
+            "description": "One line on what this workflow does."
+        },
+        "label": {
+            "type": "string",
+            "description": "What a RUN of this workflow is called, resolved once at start - so six runs of one file are tellable apart. Reads params, e.g. 'AB#${{ params.ticket }}'."
+        },
+        "params": {
+            "$ref": "#/definitions/params"
+        },
+        "cwd": {
+            "type": "string",
+            "description": "Where this file's tasks start, before any task's own 'cwd:'. Relative to the folder the run starts in unless absolute. Use 'none' when it acts on no folder at all - a workflow that only calls an HTTP endpoint - which is also what stops it asking which folder to run in before every run.",
+            "defaultSnippets": [
+                {
+                    "label": "none",
+                    "description": "This acts on no folder, so never ask which one to run in.",
+                    "body": "none"
+                },
+                {
+                    "label": "${{ workspaceFolder }}",
+                    "description": "The workspace's main folder.",
+                    "body": "${{ workspaceFolder }}"
+                },
+                {
+                    "label": "${{ home }}",
+                    "description": "The user's home directory.",
+                    "body": "${{ home }}"
+                }
+            ]
+        },
+        "vars": {
+            "$ref": "#/definitions/vars"
+        },
+        "env": {
+            "$ref": "#/definitions/env"
+        },
+        "dotenv": {
+            "$ref": "#/definitions/dotenv"
+        },
+        "plugins": {
+            "$ref": "#/definitions/plugins"
+        },
+        "stages": {
+            "type": "array",
+            "description": "The stages, in order. Each one is a barrier: nothing in the next stage starts until everything in this one has finished.",
+            "items": {
+                "$ref": "#/definitions/stage"
+            }
+        }
+    },
+    "definitions": {
+        "params": {
+            "type": "object",
+            "description": "Values this run is ASKED for before anything starts, keyed by name. Order here is the order the prompt shows them in. Params are known before the run begins, so unlike 'run.context.*' they are readable even in 'vars:'.",
+            "propertyNames": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "additionalProperties": {
+                "type": [
+                    "object",
+                    "null"
+                ],
+                "description": "A param. Empty means required with no description - the simplest declaration needs the least typing.",
+                "additionalProperties": false,
+                "not": {
+                    "allOf": [
+                        {
+                            "required": [
+                                "default"
+                            ]
+                        },
+                        {
+                            "required": [
+                                "required"
+                            ],
+                            "properties": {
+                                "required": {
+                                    "const": true
+                                }
+                            }
+                        }
+                    ]
+                },
+                "properties": {
+                    "desc": {
+                        "type": "string",
+                        "description": "What to ask for, shown in the prompt."
+                    },
+                    "required": {
+                        "type": "boolean",
+                        "description": "Required by default: a param exists because the file cannot supply the value. Opting out is what you declare. Cannot be true alongside a 'default:' - a param with a default is never missing.",
+                        "default": true
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["string", "file", "folder", "list", "map"],
+                        "default": "string",
+                        "description": "The shape of the answer. 'string' is text from a box. 'file' and 'folder' are a path picked in the open dialog, held as text - relative to the workspace folder when inside it, absolute otherwise. 'list' is what a task's 'foreach:' runs over, and what a plugin's own page hands over through eesha.run. 'map' is read by path: ${{ params.NAME.key }}."
+                    },
+                    "items": {
+                        "type": "string",
+                        "enum": ["file", "folder"],
+                        "description": "For a 'type: list' only: each item is a path picked in the open dialog, several at once. Not beside 'options:' - a list is picked from its options or in the dialog, not both."
+                    },
+                    "root": {
+                        "type": "string",
+                        "description": "Where the open dialog starts, relative to the workspace folder. Only for a file or folder param, or a list of them. Without it the dialog opens beside the last answer, else at the workspace folder."
+                    },
+                    "filters": {
+                        "type": "array",
+                        "minItems": 1,
+                        "description": "Which files the open dialog offers, as patterns like '*.md'. Only for a param picking files.",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "default": {
+                        "type": [
+                            "string",
+                            "number",
+                            "boolean",
+                            "array",
+                            "object"
+                        ],
+                        "description": "Used when the run is given nothing, which also makes the param optional. Of the param's type: a list for 'type: list', a map for 'type: map'. Must be one of 'options:' (every item, for a list) when those are declared."
+                    },
+                    "options": {
+                        "type": "array",
+                        "minItems": 1,
+                        "description": "The only accepted values, offered as a pick list - pick-many for a 'type: list'. Every entry is read as text, the way a supplied value arrives. Not for a 'type: map'.",
+                        "items": {
+                            "type": [
+                                "string",
+                                "number",
+                                "boolean"
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "vars": {
+            "type": "object",
+            "description": "Template values, substituted into this file and going no further - nothing here is exported to a spawned process. Values keep their YAML type, so a number stays a number and a whole-value '${{ vars.retries }}' hands over a real one. Resolution order is anchors, then vars, then env: a var may read a sibling var, never an env var.",
+            "additionalProperties": true
+        },
+        "env": {
+            "type": "object",
+            "description": "Environment variables exported to whatever this runs. Every value is coerced to text. Declare a value here only when something being run needs to read it; to merely use it inside this file, use 'vars:'.",
+            "additionalProperties": {
+                "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                ]
+            }
+        },
+        "dotenv": {
+            "description": "One .env path, or a list of them, layered underneath the 'env:' beside it. A later file wins over an earlier one, and a declared 'env:' value wins over both. A missing file is skipped with a line in the log, never an error - .env is the one file nobody commits.",
+            "oneOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            ]
+        },
+        "plugins": {
+            "type": "object",
+            "description": "File-local plugin names: define 'uses:' and default args once here, then reference the bare name from any task's 'uses:'. One plugin serving several vendors is declared once per vendor here rather than being a second plugin.",
+            "propertyNames": {
+                "pattern": "^[^@]+$"
+            },
+            "additionalProperties": {
+                "type": "object",
+                "required": [
+                    "uses"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                    "uses": {
+                        "type": "string",
+                        "pattern": "@",
+                        "description": "A real plugin ref, 'id@version'. An alias may not point at another alias - a bare name is what tells the two apart where they are used."
+                    },
+                    "args": {
+                        "type": "object",
+                        "description": "Default args for every task referencing this name. A task's own args win: the alias is a default, not an override.",
+                        "additionalProperties": true
+                    }
+                }
+            }
+        },
+        "stage": {
+            "type": "object",
+            "description": "A barrier. Everything inside finishes before the next stage starts.",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Shown in the panel. Defaults to this stage's position, e.g. 'stage-2'."
+                },
+                "desc": {
+                    "type": "string",
+                    "description": "One line on what this stage is for."
+                },
+                "if": {
+                    "type": [
+                        "string",
+                        "boolean",
+                        "number"
+                    ],
+                    "description": "Runs this stage only when the condition holds. The literal always() marks a cleanup stage: it still runs after an earlier failure, a rejected gate, or a Stop."
+                },
+                "artifact": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A path this stage produces. Kept as written and resolved at run time, because it may read params that only exist then."
+                },
+                "tasks": {
+                    "type": "array",
+                    "description": "The tasks, in order. The list order IS the execution order - everything in a workflow file is sequential, which is why a task here may not declare 'needs:'.",
+                    "items": {
+                        "$ref": "#/definitions/task"
+                    }
+                }
+            }
+        },
+        "task": {
+            "description": "A task. A plain string is shorthand for 'run:' in the OS default shell.",
+            "oneOf": [
+                {
+                    "type": "string",
+                    "description": "Shorthand for 'run:' - a command line through whatever shell this OS provides."
+                },
+                {
+                    "$ref": "#/definitions/taskObject"
+                }
+            ]
+        },
+        "taskObject": {
+            "type": "object",
+            "additionalProperties": false,
+            "not": {
+                "required": [
+                    "run",
+                    "uses"
+                ]
+            },
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Shown in the panel. Defaults to this task's position in the stage, e.g. 'task-2'."
+                },
+                "desc": {
+                    "type": "string",
+                    "description": "One line on what this task is for, shown beside the name."
+                },
+                "run": {
+                    "type": "string",
+                    "description": "A command line, one-liner or block. Desugars to shell@1 with this as its script, so even the tersest task is a plugin call. Mutually exclusive with 'uses:'."
+                },
+                "uses": {
+                    "type": "string",
+                    "description": "The plugin that runs this task: 'id@version' for a real one, or a bare name declared in this file's 'plugins:'. Mutually exclusive with 'run:'."
+                },
+                "args": {
+                    "type": "object",
+                    "description": "Everything the plugin itself consumes. The task level is a closed set of engine keys, so anything the plugin reads belongs here.",
+                    "additionalProperties": true
+                },
+                "shell": {
+                    "enum": [
+                        "pwsh",
+                        "cmd",
+                        "bash"
+                    ],
+                    "description": "Which shell runs 'run:'. Leave it out for whatever this OS provides - cmd on Windows, bash elsewhere. pwsh is never the default and must be named."
+                },
+                "trigger": {
+                    "enum": [
+                        "auto",
+                        "manual"
+                    ],
+                    "description": "'manual' is a human gate: the run stops here until someone reads what came before and clicks Approve. Nothing is executing while it waits, so closing the browser page does not lose it.",
+                    "default": "auto"
+                },
+                "artifact": {
+                    "type": "string",
+                    "description": "Stores what this task produced as a run variable of this name, readable by a later task as '${{ run.context.NAME.key }}' - across a stage barrier included. A plugin declaring exactly one artifact is read as '${{ run.context.NAME }}' directly."
+                },
+                "if": {
+                    "type": [
+                        "string",
+                        "boolean",
+                        "number"
+                    ],
+                    "description": "Runs this task only when the condition holds. A false condition is a skip, not a failure - the run carries on. The literal always() marks a cleanup task: it still runs after an earlier failure, a rejected gate, or a Stop."
+                },
+                "continueOnError": {
+                    "type": "boolean",
+                    "description": "Let the run carry on past this task's failure. It is still reported as Failed, never repainted green."
+                },
+                "timeout": {
+                    "description": "How long this task gets. A bare number means seconds; '500ms', '30s', '5m' and '1h' all read as what they are.",
+                    "oneOf": [
+                        {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                        },
+                        {
+                            "type": "string",
+                            "pattern": "^[0-9]+(\\.[0-9]+)?\\s*([mM][sS]|[sS]|[mM]|[hH])$"
+                        }
+                    ]
+                },
+                "retries": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "How many EXTRA attempts a failed task gets, so 'retries: 1' means two runs in total."
+                },
+                "foreach": {
+                    "type": ["string", "array"],
+                    "description": "Run once per item of a list, one after another - never in parallel. One expression that resolves to a list ('${{ params.releases }}', '${{ run.context.CREATED.items }}') or a literal list. The item is '${{ item }}' (or '${{ item.key }}'), its position '${{ itemIndex }}'. Each item gets its own retries, its own gate under 'trigger: manual', and its own log lines. The artifact collects: '${{ run.context.NAME.items[0] }}'. A task that gates per item must declare 'artifact:' - that is where a restart reads which items are done."
+                },
+                "foreachAs": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                    "description": "The name the item is read by, instead of 'item'. 'foreachAs: release' gives '${{ release }}' and '${{ releaseIndex }}'."
+                },
+                "failFast": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Stop the loop at the first failing item. false tries every item and fails the task if any did."
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Where this task runs, overriding the file's. Relative to the level above it unless absolute. Use 'none' when it acts on no folder at all, which also stops it asking which folder to run in.",
+                    "defaultSnippets": [
+                        {
+                            "label": "${{ workspaceFolder }}",
+                            "description": "The workspace's main folder.",
+                            "body": "${{ workspaceFolder }}"
+                        },
+                        {
+                            "label": "${{ workspaceConfig }}",
+                            "description": "<workspaceFolder>/.eesha.",
+                            "body": "${{ workspaceConfig }}"
+                        },
+                        {
+                            "label": "${{ home }}",
+                            "description": "The person's home directory.",
+                            "body": "${{ home }}"
+                        },
+                        {
+                            "label": "${{ cwd }}",
+                            "description": "The working directory this level runs in.",
+                            "body": "${{ cwd }}"
+                        }
+                    ]
+                },
+                "vars": {
+                    "$ref": "#/definitions/vars"
+                },
+                "env": {
+                    "$ref": "#/definitions/env"
+                },
+                "dotenv": {
+                    "$ref": "#/definitions/dotenv"
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "required": [
+                            "uses"
+                        ],
+                        "properties": {
+                            "uses": {
+                                "const": "ai@1"
+                            }
+                        }
+                    },
+                    "then": {
+                        "properties": {
+                            "args": {
+                                "$ref": "#/definitions/args_ai_1"
+                            }
+                        }
+                    }
+                },
+                {
+                    "if": {
+                        "required": [
+                            "uses"
+                        ],
+                        "properties": {
+                            "uses": {
+                                "const": "file@1"
+                            }
+                        }
+                    },
+                    "then": {
+                        "properties": {
+                            "args": {
+                                "$ref": "#/definitions/args_file_1"
+                            }
+                        }
+                    }
+                },
+                {
+                    "if": {
+                        "required": [
+                            "uses"
+                        ],
+                        "properties": {
+                            "uses": {
+                                "const": "pwsh@1"
+                            }
+                        }
+                    },
+                    "then": {
+                        "properties": {
+                            "args": {
+                                "$ref": "#/definitions/args_pwsh_1"
+                            }
+                        }
+                    }
+                },
+                {
+                    "if": {
+                        "required": [
+                            "uses"
+                        ],
+                        "properties": {
+                            "uses": {
+                                "const": "shell@1"
+                            }
+                        }
+                    },
+                    "then": {
+                        "properties": {
+                            "args": {
+                                "$ref": "#/definitions/args_shell_1"
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "args_ai_1": {
+            "description": "AI agent - Runs an agent session on whichever provider the task names. It reads, writes and works in the repo - put a gate on a later task if you want to review before anything downstream runs. Args ai@1 does not declare are handed to the provider as written, so the runtime's own session options - availableTools, excludedTools, systemMessage - are usable here under their own names.",
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "prompt"
+            ],
+            "properties": {
+                "prompt": {
+                    "description": "What to ask the agent to do.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "provider": {
+                    "description": "Which agent runtime the session runs on. The vendor is named here and nowhere else, so swapping one is this line. Only providers registered by this build are accepted - a name this build does not know fails saying which ones it does.",
+                    "default": "ghcp",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "model": {
+                    "description": "Model to run the session with. Meaning is the provider's; this task passes it through.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "context": {
+                    "description": "Named documents laid into the session before the prompt, keyed by name - usually file args, e.g. { requirements: { file: specs/requirements.md } }. This is the whole context the session starts from: what is not named here, the session has not seen.",
+                    "anyOf": [
+                        {
+                            "type": "object",
+                            "additionalProperties": true
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "attachments": {
+                    "description": "Files the session may open, as [{ path, name }]. Paths are absolute and need not be inside the working directory. Unlike 'context', which pastes content into the prompt, an attachment is a file the agent reads when it needs it - use it for instruction files and documents that would otherwise dominate the prompt.",
+                    "anyOf": [
+                        {
+                            "type": "array"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "detach": {
+                    "description": "Deliver the prompt and return the session's id without waiting for the turn - for a conversation a person is going to join in the chat page. The agent still does the work; the engine holds the session until it goes idle. Nothing is reported and 'target' is not checked, because at the moment the task returns nothing has happened yet.",
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "cleanup": {
+                    "description": "Delete the provider's stored conversation once the task succeeds. Off by default: every session stays in the provider's chat history, reopenable. A failed session is kept regardless - it is the conversation most worth reopening - and a detached one is not touched, since it was started for a person to join. Set true when a pipeline runs sessions nobody will reopen.",
+                    "default": false,
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "keep": {
+                    "description": "Hold the session after this turn instead of disposing it, so a later call naming this task's session id as 'continueSession' can pick the same conversation back up. Off by default - the session is disposed after the turn.",
+                    "default": false,
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "continueSession": {
+                    "description": "A session id from an earlier 'keep: true' run. If that session is still held, this turn runs on it instead of starting a new one - the conversation's own memory, on top of whatever the prompt supplies fresh. If the session is gone, a new one starts as usual, silently.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "interactive": {
+                    "description": "Someone is watching this session in a panel and can answer a question the agent asks. Off by default: in an unattended run a question has nobody to wait for, so the agent is told no one is there and to carry on with an assumption. Set by the spec panel; a workflow file that sets it owes the run a person at the panel.",
+                    "default": false,
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "target": {
+                    "description": "The file this session is expected to produce, relative to the working directory. The path is told to the agent, and the task fails if the session ends without the file on disk - the task's honesty is the file, not the agent's word.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "title": {
+                    "description": "A short human title, sent as the prompt's first line. Chat histories name a session by its opening text - without this, a session shows up as its first context delimiter.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "systemInstructions": {
+                    "description": "Standing instruction for every turn, appended to the provider's own guardrails - never replacing them, so its safety instructions always survive alongside this. Either the text itself, or 'file://' followed by a full path - build it with this build's own path variables (${{ workspaceFolder }}, ${{ workspaceConfig }}, ${{ home }}, ${{ cwd }}) - naming a file to read instead, once, when the session starts. Passing 'systemMessage' or 'systemPrompt' straight through as an undeclared arg does nothing: both are provider-internal names this plugin owns and ignores from the passthrough, precisely so this is the one channel and it always appends.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "plan": {
+                    "description": "A checklist file whose boxes the session may tick, relative to the working directory. Set, the session gets a task_done tool: the agent names a task's id and the engine flips that one box in this file - the plan never goes through the model to change one character. Leave unset for a session with no boxes to tick.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "checkPlan": {
+                    "description": "A plan file this session is writing, relative to the working directory. Set, the session gets a check_plan tool that reads the draft the way the implement phase will and reports every problem by line, so the agent fixes them before it stops. The spec panel sets it on the phase that writes the plan.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "files": {
+                    "description": "The files this session is known to work on, relative to the working directory. A steering file with 'inclusion: fileMatch' whose 'fileMatchPattern' matches one of them is attached to the first message. The spec panel sets it for an implement wave from the plan's 'Files:' lines.",
+                    "anyOf": [
+                        {
+                            "type": "array"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "refuseWrites": {
+                    "description": "Files this session may not write, relative to the working directory. A write to one is refused at the permission check and the agent is told why. The spec panel sets it for a Kiro or Spec Kit phase: the documents of the spec's other phases, so Kiro's spec mode stops at the document this phase writes. Only ACP runtimes check it - Kiro always runs on one.",
+                    "anyOf": [
+                        {
+                            "type": "array"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "verbatim": {
+                    "description": "The prompt is already the whole message - send it exactly as given, without adding the title, the 'context' documents or the 'target' instruction. Off by default, and every ordinary task leaves it off: composing the message is what this plugin is for. It exists for a rerun that hands back the message a person edited in the AI Session tab, which is the composed text already - composing it a second time would repeat the title, the documents and the target instruction inside themselves. Attachments still go: they are files the session opens, not text in the prompt.",
+                    "default": false,
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "allowedEnv": {
+                    "description": "Environment variable names that ${{ env.NAME }} in an MCP declaration may read - names only, never values. One grant among three: env.allowed in settings.json and the workflow's own env: block also grant names, and env.denied vetoes them all. A name nothing grants fails the task with an error saying how to grant it.",
+                    "anyOf": [
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "mcp": {
+                    "description": "Which of settings.json's MCP servers this session gets, and which of their tools. Both are allowlists and both are optional: no 'servers' means every declared server, no 'tools' means every tool of each selected server. A name settings.json does not declare fails the task, naming the declared ones. A server disabled in settings.json stays out even when named here. A task chooses among the machine's servers; it cannot declare one.",
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/mcpSelection"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                }
+            }
+        },
+        "args_file_1": {
+            "description": "Read or write a file - Reads a file into a run variable, or writes one from a value.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "operation",
+                "path"
+            ],
+            "properties": {
+                "operation": {
+                    "description": "What to do with the path.",
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "read",
+                                "write",
+                                "mkdir"
+                            ]
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "path": {
+                    "description": "Relative to the workspace unless absolute.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "content": {
+                    "description": "What to write. Required when writing, ignored when reading.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "createDirectories": {
+                    "description": "Create the parent folders when writing, rather than failing on a missing one.",
+                    "default": true,
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                }
+            }
+        },
+        "args_pwsh_1": {
+            "description": "PowerShell - Runs an inline PowerShell script or a .ps1 file.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "script": {
+                    "description": "Inline PowerShell to run. Mutually exclusive with 'file'.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "file": {
+                    "description": "Path to a .ps1 file, relative to the task's working directory.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "additionalArgs": {
+                    "description": "Arguments appended when running 'file', e.g. -Name \"World\".",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "shell": {
+                    "description": "'pwsh' - the only value this task accepts. A task that wants cmd wants a 'run:' task.",
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "pwsh"
+                            ]
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "errorActionPreference": {
+                    "description": "Prepended as $ErrorActionPreference. 'stop' makes a failing cmdlet fail the task - without it a cmdlet error only writes to stderr and the task still passes.",
+                    "default": "stop",
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "default",
+                                "stop",
+                                "continue",
+                                "silentlyContinue"
+                            ]
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "progressPreference": {
+                    "description": "Prepended as $ProgressPreference. Left at 'silentlyContinue' so progress bars do not spray control characters into the log.",
+                    "default": "silentlyContinue",
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "default",
+                                "stop",
+                                "continue",
+                                "silentlyContinue"
+                            ]
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "failOnStderr": {
+                    "description": "Fail the task if anything is written to stderr, even when it exits zero.",
+                    "default": false,
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "ignoreExitCode": {
+                    "description": "Report a non-zero exit without failing the task.",
+                    "default": false,
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                }
+            }
+        },
+        "args_shell_1": {
+            "description": "Shell - Runs a command line through the OS shell - what a task's run: desugars to.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "script"
+            ],
+            "properties": {
+                "script": {
+                    "description": "The command line to run.",
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                },
+                "shell": {
+                    "description": "Which shell runs it. Absent means whatever this OS provides by default - cmd on Windows, bash elsewhere. pwsh must be named explicitly.",
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "pwsh",
+                                "cmd",
+                                "bash"
+                            ]
+                        },
+                        {
+                            "$ref": "#/definitions/templateOrFile"
+                        }
+                    ]
+                }
+            }
+        },
+        "mcpSelection": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "What one task asks for out of the MCP servers settings.json declares. Both keys are allowlists; absence means all.",
+            "properties": {
+                "servers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Server keys as declared under ai.mcpServers in settings.json, e.g. [ado, github]. Absent means every declared server."
+                },
+                "tools": {
+                    "type": "object",
+                    "description": "Bare tool names per server key, e.g. { ado: [wit_get_work_item, wit_update_work_item] }. Absent means every tool of each selected server. A server named here must also be in 'servers' when 'servers' is given.",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "defaultSnippets": [
+                {
+                    "label": "servers",
+                    "description": "Only these servers, every tool of each.",
+                    "body": {
+                        "servers": [
+                            "$1"
+                        ]
+                    }
+                },
+                {
+                    "label": "servers and tools",
+                    "description": "Only these servers, and only these tools of one of them.",
+                    "body": {
+                        "servers": [
+                            "${1:ado}"
+                        ],
+                        "tools": {
+                            "${1:ado}": [
+                                "$2"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        "templateOrFile": {
+            "description": "A whole-value '${{ }}' expression, or a file input that resolves to the document's text. Both have no type until the run resolves them.",
+            "anyOf": [
+                {
+                    "type": "string",
+                    "pattern": "^\\s*\\$\\{\\{\\s*[\\w.-]+\\s*\\}\\}\\s*$",
+                    "description": "A value that is NOTHING BUT one expression, so it keeps the type of what it resolves to."
+                },
+                {
+                    "type": "object",
+                    "required": [
+                        "file"
+                    ],
+                    "additionalProperties": false,
+                    "description": "Reads a document before the plugin runs. Required by default, so a task whose document is missing fails with the path named.",
+                    "properties": {
+                        "file": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The path, which may itself hold '${{ }}' templates."
+                        },
+                        "optional": {
+                            "type": "boolean",
+                            "description": "Whether a missing file is acceptable, resolving to an empty string instead of failing.",
+                            "default": false
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}

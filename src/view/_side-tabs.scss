@@ -1,0 +1,43 @@
+// A tab's label inside the UI library's Tabs: its name, a count, and a
+// dot when a closed tab has something worth a look. The strip, the tabs
+// and the open tab's mark are the library's.
+.side-tab {
+
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+
+    // A plain number by default, in the tab's own colour. Only a count
+    // that carries a severity gets a chip - and with it the ink colour,
+    // which is the page background and unreadable without one.
+    &__count {
+        padding: 0 var(--spacing-xs);
+        border-radius: var(--radius-sm);
+        color: inherit;
+        font-size: var(--font-size-xs);
+        font-weight: 700;
+    }
+
+    &__count--error {
+        background: var(--color-error);
+        color: var(--color-status-ink);
+    }
+
+    &__count--warning {
+        background: var(--color-warning);
+        color: var(--color-status-ink);
+    }
+
+    // Something worth a look in a closed tab - the UI library's status
+    // dot (see tabLabel in PhasePanel.tsx). A dot, not a number: a
+    // question is not a quantity, and "1" beside a tab reads as one
+    // unread item rather than as one thing waiting.
+    &__dot {
+        flex: 0 0 auto;
+    }
+}
+
+// Pushes the close button to the far end of the strip.
+.side-tabs .log-panel__close {
+    margin-left: auto;
+}

@@ -1,0 +1,31 @@
+// The numbers the rules would otherwise spell out.
+//
+// Emits nothing on its own - it is `@use`d for its members, and every one
+// of them compiles to a plain CSS value. Nothing here is a
+// theme token: those are custom properties in `_tokens.scss`, because a
+// theme has to be able to change them after the CSS has shipped. These
+// are decisions the stylesheet makes for itself, so they can be Sass.
+
+// The density grid, as a call instead of a calc.
+//
+// `--space-unit` still does the arithmetic at run time, so a theme
+// turning that one knob still moves every gap, pad and size built on it.
+// This only saves writing the same calc out twenty-six times.
+@function space($steps) {
+    @return calc(var(--space-unit) * #{$steps});
+}
+
+// A radius larger than any control is tall, which rounds the ends of a
+// chip into a pill however tall it turns out to be.
+$radius-pill: 999px;
+
+// The stacking order, top to bottom.
+//
+// Written out because "5" does not say what it is above. Anything that
+// covers the panel is $z-overlay; everything else is layered inside its
+// own pane and only has to clear its siblings.
+$z-raised: 1;        // sticky bars, dropdowns, tools - above their pane
+$z-inline-edit: 2;   // the editor a block turns into
+$z-peek: 3;          // the popover a reference opens
+$z-floating: 5;      // panel actions that sit over the content
+$z-overlay: 20;      // full-panel overlays: diagrams, peeks, the full doc

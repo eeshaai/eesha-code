@@ -1,0 +1,19 @@
+# Installed packages
+node_modules/
+
+# Build output
+dist/
+out-meta/
+
+# Test output
+coverage/
+test-results/
+
+# Local files
+*.log
+*.tmp
+.env
+.env.*
+.DS_Store
+Thumbs.db
+playwright-report/

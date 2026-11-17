@@ -1,0 +1,50 @@
+// One size for every drawn icon, chosen from a scale.
+//
+// An icon carries no width or height attribute of its own. It carries a
+// viewBox and one of these classes, and the size comes from a token the
+// same way a font size does - so "how big is a small icon" has one
+// answer, and a theme can move all of them together.
+//
+// The box these classes draw is square; the viewBox inside it need not
+// be. SVG's default preserveAspectRatio fits a non-square drawing inside
+// the square and centres it, rather than stretching it to the corners.
+//
+// `drawn-icon`, not `icon`: the UI library's Icon is an <svg> with the
+// class `icon`, and these box sizes must not reach it. This file is
+// only for the hand-drawn SVGs in the panels.
+
+svg.drawn-icon {
+
+    // Never squeezed by a flex parent, and never stretched to the line
+    // height of the text beside it.
+    flex: 0 0 auto;
+    display: block;
+
+    width: var(--icon-size-md);
+    height: var(--icon-size-md);
+
+    &--xs {
+        width: var(--icon-size-xs);
+        height: var(--icon-size-xs);
+    }
+
+    &--sm {
+        width: var(--icon-size-sm);
+        height: var(--icon-size-sm);
+    }
+
+    &--md {
+        width: var(--icon-size-md);
+        height: var(--icon-size-md);
+    }
+
+    &--lg {
+        width: var(--icon-size-lg);
+        height: var(--icon-size-lg);
+    }
+
+    &--xl {
+        width: var(--icon-size-xl);
+        height: var(--icon-size-xl);
+    }
+}

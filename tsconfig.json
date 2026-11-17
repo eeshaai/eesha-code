@@ -1,0 +1,18 @@
+{
+    // The server and the command, with the code they share, type-checked with
+    // Node's types only. The page has its own config: tsconfig.web.json.
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "strict": true,
+        "rootDir": ".",
+        "noEmit": true,
+        "jsx": "react-jsx",
+        "types": ["node"],
+        "resolveJsonModule": true,
+        "skipLibCheck": true
+    },
+    "include": ["src", "e2e", "playwright.config.ts"],
+    "exclude": ["src/view", "src/web", "src/sdd/view"]
+}

@@ -1,0 +1,642 @@
+@use "scale" as *;
+
+// The AI Session tab: the conversation, and only the conversation -
+// see ChatView.tsx.
+//
+// Scrolls itself rather than sitting inside something that does, so it
+// can stay pinned to the newest turn.
+.chat-view {
+
+    // How much of the pane a person's turn may take, and the width of
+    // a speaker's mark. The agent's turn has no share of its own - it
+    // takes what is there.
+
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+
+    // Everything the thread holds, in one measurable box.
+    //
+    // The scroller's own height is fixed by the pane, so it never
+    // changes when what is inside it grows - a resize observer on it
+    // would never fire. This wrapper does change height, and that is
+    // what the pin-to-newest logic watches (see ChatView.tsx).
+    //
+    // Grows but never shrinks, so it is at least as tall as the
+    // scroller when the thread is short - which is what lets the
+    // spacer below push the foot to the bottom edge - and taller than
+    // it once the thread overflows.
+    &__inner {
+        flex: 1 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+        // No bottom padding here - the foot carries it, see &__foot.
+        padding: var(--spacing-md) var(--spacing-lg) 0;
+    }
+
+    &__empty {
+        color: var(--color-fg-muted);
+        font-size: var(--font-size-sm);
+    }
+
+    // Eats whatever height the thread does not use, so the foot sits at
+    // the bottom of the pane instead of drifting up under a short
+    // thread - see ChatView.tsx. Shrinks to nothing once the thread
+    // overflows and the pane is scrolling anyway.
+    &__spacer {
+        flex: 1 1 auto;
+    }
+
+    // The status line, and under it the compose box or the open
+    // question's card, stuck to the bottom edge of the pane - see
+    // ChatView.tsx. Sticky inside the scroller rather than placed
+    // outside it, so the thread's scroll height still counts it and the
+    // pin-to-newest logic stays as it is. Painted, because the thread
+    // scrolls under it. Carries the pane's bottom padding itself, so it
+    // sits at the same height whether the thread is scrolled to its end
+    // or not.
+    //
+    // Has a top edge and a shadow above it, so it reads as a separate
+    // strip the thread scrolls under, not as more of the thread. Both
+    // are cut from the text colour: in the light themes the foot and
+    // the thread are the same white, and a fixed grey line between
+    // them would not show.
+    &__foot {
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+        flex-shrink: 0;
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        padding-top: var(--spacing-sm);
+        padding-bottom: var(--spacing-md);
+        background: var(--color-bg);
+        border-top: 1px solid var(--color-border-strong);
+        box-shadow: 0 -6px 12px -8px color-mix(in srgb, var(--color-fg) 40%, transparent);
+    }
+
+    // Where the conversation stands: working, waiting for you, or done.
+    //
+    // In the foot, above the compose box, so the clock and what the
+    // agent is doing stay in view no matter where the thread is
+    // scrolled. Quiet by default and only coloured when it is waiting -
+    // "working" and "done" are states nobody needs to be told twice,
+    // and a question raised in a tab you are not looking at is the one
+    // that gets blamed on the model.
+    //
+    // A status, so it is drawn as one: small, on the left, a mark in
+    // front. It is not centred in body-size text, which would read as a heading over the compose box.
+    &__status {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        color: var(--color-fg-muted);
+        font-size: var(--font-size-xs);
+        line-height: 1.4;
+
+        // The same colour as the question card's stripe below it, so
+        // "waiting" and the thing it is waiting on read as one.
+        &--waiting {
+            color: var(--color-warning);
+            font-weight: 600;
+        }
+    }
+}
+
+// Where the turn stands and how full the window is, on one line.
+//
+// The status is as long as its sentence and the meter is pushed to the
+// far end, so the two never collide however long "Working · 2m 21s ·
+// reading tasks.md" gets.
+.chat-view__bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+// The context meter and the card it opens.
+//
+// Relative so the card can hang off it; pushed to the end of the bar
+// because the button is small. The bar is the last thing before the
+// compose box, so the card grows upwards into the thread rather than
+// downwards off the bottom of the pane.
+.chat-view__meter {
+    position: relative;
+    margin-left: auto;
+}
+
+// What the row opens: the figures behind the two on the row.
+//
+// Anchored to the bottom of the meter and pushed up by its own height,
+// so it sits directly above the row with the compose box untouched
+// beneath. Its own ground and shadow, like the citation peek: a card
+// over the thread needs both or the turns show through it.
+// The window's section in the popup behind the compose box's own meter
+// button - see ComposeBox in ChatView.tsx.
+// Capped at most of the screen's height, with a scroll bar, so an open
+// category with many parts never pushes the top rows out of reach.
+.chat-context-panel {
+    width: 100%;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: var(--spacing-sm);
+    box-sizing: border-box;
+}
+
+// The Compact button, under the meter, on the right.
+.chat-context-panel__compact {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--spacing-sm);
+}
+
+// A turn's Markdown (see ChatProse in the library): no indent, and no
+// space above its first block or below its last.
+.ee-chat-turn__body.md-body {
+    margin-left: 0;
+}
+
+.ee-chat-turn__body.md-body > :first-child {
+    margin-top: 0;
+}
+
+.ee-chat-turn__body.md-body > :last-child {
+    margin-bottom: 0;
+}
+
+.chat-ask-card {
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    width: 100%;
+    box-sizing: border-box;
+
+    &__question {
+        font-family: inherit;
+        font-size: var(--font-size-base);
+        line-height: 1.65;
+        overflow-wrap: anywhere;
+    }
+}
+
+// The note under a question nobody here can answer, and the person's
+// reply under the question it answers - see Answered in ChatView.tsx.
+.chat-ask {
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    width: 100%;
+}
+
+// The open question or permission card at the foot of the thread, in
+// the compose box's place. A long one (a big command, many choices)
+// scrolls inside, so its top and its buttons can always be reached.
+.chat-view__ask {
+    max-height: 60vh;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+// A permission request - see PermissionCard in ChatView.tsx. The
+// library's panel, and under it one row to refuse with a reason.
+.chat-permission {
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    width: 100%;
+
+    &__reason {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+
+        > :first-child {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+    }
+}
+
+// The standing box at the foot of the thread - see ComposeBox in
+// ChatView.tsx. Unlike .chat-ask, always there while the step is
+// running: adding to the turn in flight is not tied to a question.
+.chat-compose {
+
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 100%;
+
+    // The field, the text box, Send and Stop are the UI library's
+    // PromptInput - see ComposeBox in ChatView.tsx. So is the provider
+    // line above the text (runtime, mode, model, effort - see
+    // providerPartsOf). What is styled here is the panel's own controls
+    // in its toolbar: the permission switch and the starting-sentence menu.
+
+    // The starting-sentence menu opens against its own button, above
+    // the box, so it never covers the text being typed.
+    &__presets {
+        position: relative;
+    }
+
+    // The outlines and bars on the compose row. The library draws them
+    // in `--color-border`, which is the panel border - almost
+    // the page background in the dark theme, so neither would show.
+    // The input border is the one used for dropdowns.
+    .ee-prompt-input__toolbar-btn:not(.ee-prompt-input__toolbar-btn--active-tool) {
+        border-color: var(--color-border-input);
+    }
+
+    .ee-prompt-input__toolbar-divider {
+        background-color: var(--color-border-input);
+    }
+
+    // The rule under the status strip at the top of the box - the same
+    // colour as the bars, for the same reason.
+    .ee-prompt-input__header {
+        border-bottom-color: var(--color-border-input);
+    }
+
+    // The status in that strip stays on one line: a long "doing" is cut
+    // with "…" rather than making the strip two lines tall. The full text
+    // is in the tooltip.
+    .ee-prompt-input__header .chat-view__status {
+        min-width: 0;
+
+        > span:last-child {
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+    }
+
+    // The window's meter button and Usage, at the right end of that strip.
+    // Never squeezed - the status gives way first.
+    &__meters {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        gap: var(--spacing-xs);
+        margin-left: auto;
+    }
+
+    // The file chips above the text - the open-file chip and the "/" files.
+    // The library draws their edge in `--color-border`, the panel
+    // border, which some themes make the same as the background, so no
+    // edge would show at all. The strong border is mixed from the text
+    // color, so it shows on every theme.
+    .ee-prompt-input__reference-chip {
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-sm);
+    }
+
+    // The same edge, for the same reason, on the compose box itself and
+    // on its dropdowns. Not while focused, so each
+    // keeps the library's own focus color.
+    .ee-prompt-input:not(:focus-within),
+    .ee-select:not(:focus-within) {
+        border-color: var(--color-border-strong);
+    }
+
+    // The library's box shows focus on its own border. The panel's
+    // focus ring (see _base.scss) would draw a second one inside it.
+    .ee-prompt-input__textarea:focus-visible {
+        outline: none;
+    }
+
+    &__menu {
+        position: absolute;
+        bottom: calc(100% + var(--spacing-xs));
+        left: 0;
+        z-index: $z-raised;
+        display: flex;
+        flex-direction: column;
+        min-width: 14rem;
+        padding: var(--spacing-xs);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+
+        // `--color-bg-elevated`, because an unknown custom property
+        // makes the whole declaration invalid, and the menu would have no
+        // background at all, so the meter behind it would show through.
+        // The same token the usage card and the citation peek use -
+        // anything drawn over the thread needs its own ground.
+        background: var(--color-bg-elevated);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    }
+
+    &__menu-item {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        border: none;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--color-fg);
+        font-family: inherit;
+        font-size: var(--font-size-sm);
+        text-align: left;
+        cursor: pointer;
+
+        &:hover {
+            background: var(--color-bg-hover);
+        }
+    }
+}
+
+// An opened call's arguments, one per line: the name, then the value.
+// See ToolBody in chat/toolKinds.tsx.
+.chat-tool-args {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: var(--spacing-md);
+    row-gap: 2px;
+    margin: var(--spacing-xs) 0 0;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+
+    dt {
+        color: var(--color-text-secondary);
+    }
+
+    dd {
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+}
+
+// An opened edit: the file, then its old text over its new text.
+.chat-tool-edit__path {
+    margin-top: var(--spacing-sm);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.chat-tool-edit__diff {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+// A short word inside an opened call: a cut text, no arguments.
+.chat-tool-note {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+}
+
+// A short word from the compose box under it - a file refused as too
+// large. Gone after a few seconds (see ComposeBox).
+.chat-compose__notice {
+    margin-top: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+    color: var(--color-warning);
+}
+
+// The chat (see ChatPane.tsx): the thread fills the view,
+// the compose box sits at its foot.
+.chat-pane-body {
+    height: 100vh;
+    overflow: hidden;
+}
+
+.chat-pane {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-height: 0;
+    padding: 0 var(--spacing-sm);
+    box-sizing: border-box;
+}
+
+// The Handover modal (see HandoverModal in ChatView.tsx): a line of what
+// happens, then the runtime and model pickers, one per row.
+.chat-handover {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3, 12px);
+    min-width: 18rem;
+}
+
+.chat-handover__text {
+    margin: 0;
+}
+
+.chat-handover__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 4px);
+}
+
+// The Handover modal's model picker with its refresh button beside it.
+.chat-handover__model {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1, 4px);
+
+    > :first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+}
+
+// The compose box: a grey box with the field's edge, 8px corners, the
+// text on top and the runtime, model and Send row under it with no line
+// between them. Three classes, so these win over the compose rules above.
+.chat-pane .chat-compose .ee-prompt-input {
+    gap: 8px;
+    padding: 9px 10px;
+    background: var(--color-bg-elevated);
+}
+
+.chat-pane .chat-compose .ee-prompt-input:not(:focus-within) {
+    border-color: var(--color-border-input);
+}
+
+.chat-pane .chat-compose .ee-prompt-input__toolbar {
+    padding-top: 0;
+    border-top: 0;
+    font-size: var(--font-size-sm);
+}
+
+// Eesha Code's Session panel (see chat/SessionPanel.tsx): one section per
+// part of the session, each opening and closing on its heading.
+// Scrolls by itself inside the right panel, under the panel's heading,
+// so its height never depends on the chat or the session list.
+.session-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    font-size: var(--font-size-sm);
+}
+
+.session-panel__section {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.session-panel__head {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-md);
+    min-height: 28px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.session-panel__head::-webkit-details-marker {
+    display: none;
+}
+
+// The open / closed mark before the heading.
+.session-panel__head::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid var(--color-fg-muted);
+    border-bottom: 1.5px solid var(--color-fg-muted);
+    transform: rotate(-45deg);
+    flex-shrink: 0;
+}
+
+.session-panel__section[open] > .session-panel__head::before {
+    transform: rotate(45deg);
+}
+
+.session-panel__head:hover {
+    background: var(--color-bg-hover);
+}
+
+.session-panel__title {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+}
+
+.session-panel__summary {
+    margin-left: auto;
+    color: var(--color-fg-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+// The summary is for a closed section; an open one shows the figures.
+.session-panel__section[open] > .session-panel__head > .session-panel__summary {
+    display: none;
+}
+
+.session-panel__body {
+    padding: 0 var(--spacing-md) var(--spacing-sm) calc(var(--spacing-md) + 14px);
+}
+
+.session-panel__empty,
+.session-panel__line {
+    margin: var(--spacing-xs) 0;
+    color: var(--color-fg-muted);
+    line-height: 1.45;
+}
+
+.session-panel__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.session-panel__list > li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-xs) var(--spacing-sm);
+    min-height: 22px;
+}
+
+.session-panel__name {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-panel__note {
+    color: var(--color-fg-muted);
+    white-space: nowrap;
+}
+
+// Why a server failed: on its own line under the server.
+.session-panel__reason {
+    flex-basis: 100%;
+    color: var(--color-error);
+    line-height: 1.4;
+}
+
+.session-panel__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.session-panel__dot--good { background: var(--color-success); }
+.session-panel__dot--bad { background: var(--color-error); }
+.session-panel__dot--off { background: var(--color-fg-muted); }
+
+.session-panel__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--spacing-xs);
+}
+
+// Usage and Account rows: the row under the mouse is lit, so a name
+// on the left lines up with its value on the right.
+.session-panel__rows .ee-usage-card__row {
+    padding: 2px var(--spacing-sm);
+}
+
+.session-panel__rows .ee-usage-card__row:hover {
+    background: var(--color-bg-hover);
+}
+
+// The Usage table: the figures keep their width and the turn's label
+// takes what is left, cut with "…".
+.session-panel__usage {
+    padding: 0 var(--spacing-sm);
+
+    .ee-usage-card__table {
+        table-layout: auto;
+    }
+
+    tbody th:first-child {
+        width: 100%;
+        max-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    tbody tr:hover {
+        background: var(--color-bg-hover);
+    }
+
+    .ee-usage-card__total th,
+    .ee-usage-card__total td {
+        font-weight: 600;
+        border-top: 1px solid var(--color-border);
+    }
+}

@@ -1,0 +1,46 @@
+schema: 1
+id: custom
+name: Custom
+desc: Requirements, design, tasks, implement. A human gate between each. The default, and a starting point for your own style.
+
+# A question a phase wrote down and nobody answered stops the phase
+# after it. Written out rather than left to the default so a reader of
+# this file can see the gate is on.
+blockOnOpenQuestions: true
+
+# Starting sentences for the revise box - the split button beside Send
+# in a phase's AI Session tab. Picking one fills the box; you still read
+# it, edit it and press Send. Left out, the menu shows two built-in
+# sentences ("Prompt changed", "Prev doc(s) changed"). Declared, yours
+# replace them. A stage can carry its own list too, added after this one.
+# The text may read the spec variables.
+#
+# presets:
+#   - label: Tighten wording
+#     text: Keep every decision. Cut words. Do not add sections.
+#   - label: Match the code
+#     text: Re-read the code ${{ spec.name }} touches and fix anything this document says that the code contradicts.
+
+specTypes:
+  - id: feature
+    label: Feature
+    stages: [requirements, design, tasks, implement]
+  - id: bug
+    label: Bug fix
+    stages: [requirements, tasks, implement]
+
+stages:
+  - id: requirements
+    label: Requirements
+  - id: design
+    label: Design
+  - id: tasks
+    label: Tasks
+    # To work the plan from its own page with no implement phase on the
+    # rail: set `actionable: true` here and drop `implement` from every
+    # spec type above. The output gate is then implied after this stage.
+    # actionable: true
+  - id: implement
+    label: Implementation
+  - id: idea
+    label: Idea
