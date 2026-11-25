@@ -171,12 +171,6 @@ export interface SourcedAcpAgent {
 export const FEATURE_FLAGS = {
 
     /**
-     * Show a shell command's output under its tool row while it is
-     * still running, instead of only when the call ends.
-     */
-    liveToolOutput: "Stream a running tool's output into its row in the log.",
-
-    /**
      * Put money - dollars, or another currency an ACP agent names - in
      * the usage card. Copilot's credits and premium requests are an
      * allowance rather than a sum anybody is charged, so they show
@@ -223,27 +217,6 @@ export const FEATURE_FLAGS = {
     hideCopilotPremiumRequests: "Record only Copilot's credits, not its premium requests, for what a call charged.",
 
     /**
-     * The Handover button. It moves a
-     * started chat to another runtime: it saves the conversation as a
-     * Markdown file and starts a new session that reads it.
-     *
-     * On by default. Off, the button is not offered. A started chat's
-     * runtime picker is locked either way, so with the flag off the only
-     * way to another runtime is New Session, which starts empty.
-     */
-    handover: "Offer a Handover button that moves a started chat to another runtime, through a saved file the new runtime reads.",
-
-    /**
-     * Show what a finished tool call returned when its card is opened.
-     * The providers keep only a short, one-line start of the result, so
-     * the card says when the text was cut.
-     *
-     * Off by default. Off, a finished card shows only whether the call
-     * worked and how long it took; a failed one still shows why.
-     */
-    toolResults: "Show what a finished tool call returned when its card in the chat is opened.",
-
-    /**
      * The Evaluator page. It sends one message to up to six variants
      * - a runtime, a model and a little setup each - and shows their
      * chats side by side, with a report of each one's numbers. Each
@@ -275,9 +248,7 @@ export type FeatureFlags = { -readonly [Flag in keyof typeof FEATURE_FLAGS]: boo
  * work and the switch is kept only so somebody can go back. Everything
  * not named here is off until a profile says otherwise.
  */
-const FEATURES_ON_BY_DEFAULT: readonly (keyof FeatureFlags)[] = ["docDiff","hideCopilotPremiumRequests"
-    , "handover"
-];
+const FEATURES_ON_BY_DEFAULT: readonly (keyof FeatureFlags)[] = ["docDiff", "hideCopilotPremiumRequests"];
 
 /**
  * What a file that declares no `features` means: every flag at its own
@@ -765,7 +736,7 @@ export function parseDeclared(
  * A file that still names one loads as before: the name is skipped,
  * not an error, so an upgrade never stops on a line that did its job.
  */
-const RETIRED_FLAGS: readonly string[] = ["Feature-SDD", "widgets"];
+const RETIRED_FLAGS: readonly string[] = ["Feature-SDD", "widgets", "handover", "toolResults", "liveToolOutput"];
 
 /**
  * The `features:` section of one file, checked: a mapping, only flags

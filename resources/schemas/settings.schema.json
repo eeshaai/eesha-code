@@ -356,11 +356,6 @@
       "description": "Feature flags - switches for features that ship on their own flag. Allowed in both the profile and the workspace settings.json; merged per flag, profile winning. An unknown flag name is an error, not a no-op.",
       "additionalProperties": false,
       "properties": {
-        "liveToolOutput": {
-          "type": "boolean",
-          "description": "Show a running command's output under its row in the log as it arrives, instead of only when the call finishes. Expand the row to read it. Copilot provider only - the Claude Agent SDK does not send output until the call ends. Default: false.",
-          "default": false
-        },
         "sessionCost": {
           "type": "boolean",
           "description": "Show what a session cost in money - dollars, or another currency an ACP agent names - in the usage card above the compose box, for the last turn, this session, this phase and this whole spec. Copilot's credits and premium requests are an allowance rather than a sum you are charged, so they show either way and this flag does not hide them. Off, a Claude session's card shows the context window and the tokens each model read and wrote, and no money. The figures are recorded either way, so turning this on shows the whole history back. Default: false.",
@@ -380,16 +375,6 @@
           "type": "boolean",
           "description": "Record only Copilot's credits for what a call charged, and leave out its premium requests. Copilot reports both whatever your plan is, so one of them is always a unit you are not billed in. Calls made while this is on lose the premium-request figure; older runs keep what they recorded. Default: true.",
           "default": true
-        },
-        "handover": {
-          "type": "boolean",
-          "description": "Show a Handover button on a started chat. Handover asks for the new runtime and model, saves the conversation so far as a Markdown file in the workspace, and starts a new session that reads it and tells you where things stand. A started chat's runtime picker is locked either way, so with this off the only way to another runtime is New Session, which starts empty. Default: true.",
-          "default": true
-        },
-        "toolResults": {
-          "type": "boolean",
-          "description": "Show what a finished tool call returned when you open its card in the chat. Only a short, one-line start of the result is kept, so the card says when the text was cut. Off, a finished card shows only whether the call worked and how long it took; a failed call still shows why. Default: false.",
-          "default": false
         },
         "evals": {
           "type": "boolean",

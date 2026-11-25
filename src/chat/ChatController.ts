@@ -815,23 +815,17 @@ export class ChatController {
     private async postFeatures(): Promise<void> {
 
         let sessionCost = false;
-        let handover = false;
-        let toolResults = false;
 
         try {
 
-            const features = (await loadEngineSettings(this.settingsFolder)).features;
-
-            sessionCost = features.sessionCost === true;
-            handover = features.handover === true;
-            toolResults = features.toolResults === true;
+            sessionCost = (await loadEngineSettings(this.settingsFolder)).features.sessionCost === true;
 
         } catch {
 
             // A broken settings.json is reported by the turn that reads it.
         }
 
-        this.post({ type: "features", sessionCost, handover, toolResults, paths: true });
+        this.post({ type: "features", sessionCost, paths: true });
     }
 
     /** The chat's lines, drawn again from its file. */
@@ -1586,19 +1580,6 @@ export class ChatController {
             this.host.notify(this, { kind: "ended", outcome: succeeded ? "done" : "failed" });
     }
 
-    /** Whether the `handover` flag is on. Off when the settings cannot be read. */
-    private async handoverOn(): Promise<boolean> {
-
-        try {
-
-            return (await loadEngineSettings(this.settingsFolder)).features.handover === true;
-
-        } catch {
-
-            return false;
-        }
-    }
-
     /**
      * The Handover modal's Start: this chat moves to another runtime.
      *
@@ -1620,9 +1601,6 @@ export class ChatController {
 
         if (this.busy)
             return this.note("Still working - stop the agent first, then hand over.");
-
-        if (!await this.handoverOn())
-            return this.note("Handover is off. Turn on the handover feature flag in settings.json to use it.");
 
         if (!(await providerIds(this.host.ai)).includes(provider))
             return this.note(`${provider} is not listed in ai.providers, so the session cannot move to it.`);

@@ -102,9 +102,6 @@ export default function SddSpecView() {
      */
     const [sessionCost, setSessionCost] = useState(false);
 
-    /** The `toolResults` feature flag - what a finished tool call returned, on its card. Off until the host says. */
-    const [toolResults, setToolResults] = useState(false);
-
     /**
      * The `docDiff` feature flag - whether the Doc tab offers "What
      * changed". False until the host says otherwise, like every flag
@@ -285,7 +282,6 @@ export default function SddSpecView() {
             else if (message.type === "features") {
                 setSessionCost(message.sessionCost);
                 setDocDiff(message.docDiff);
-                setToolResults(message.toolResults === true);
             }
 
             else if (message.type === "notes")
@@ -383,7 +379,6 @@ export default function SddSpecView() {
             openFile={path => host.postMessage({ type: "open", path })}
             notes={notes}
             sessionCost={sessionCost}
-            toolResults={toolResults}
             docDiff={docDiff}
 
             // Optimistic, then corrected: the host echoes what it wrote,

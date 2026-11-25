@@ -169,8 +169,8 @@ describe("parseEngineSettings", () => {
 
     it("reads a feature flag from a profile file", () => {
 
-        expect(parseEngineSettings(`{ "features": { "liveToolOutput": true } }`, SOURCE).features)
-            .toEqual({ liveToolOutput: true });
+        expect(parseEngineSettings(`{ "features": { "steering": true } }`, SOURCE).features)
+            .toEqual({ steering: true });
     });
 
     /*
@@ -179,29 +179,31 @@ describe("parseEngineSettings", () => {
      */
     it("refuses a feature flag it has never heard of, naming the ones it knows", () => {
 
-        expect(() => parseEngineSettings(`{ "features": { "liveToolOutputs": true } }`, SOURCE))
-            .toThrow(/unknown feature flag 'features.liveToolOutputs'.*liveToolOutput/s);
+        expect(() => parseEngineSettings(`{ "features": { "steerings": true } }`, SOURCE))
+            .toThrow(/unknown feature flag 'features.steerings'.*steering/s);
     });
 
     /* Their features are always on now: an older file that still names them loads as before. */
-    it("skips the removed flags Feature-SDD and widgets", () => {
+    it("skips the removed flags", () => {
 
-        expect(parseEngineSettings(`{ "features": { "Feature-SDD": true, "widgets": true, "liveToolOutput": true } }`, SOURCE).features)
-            .toEqual({ liveToolOutput: true });
+        expect(parseEngineSettings(
+            `{ "features": { "Feature-SDD": true, "widgets": true, "handover": false, "toolResults": true, "liveToolOutput": true, "steering": true } }`,
+            SOURCE).features)
+            .toEqual({ steering: true });
     });
 
     it("refuses a feature flag that is not a boolean", () => {
 
-        expect(() => parseEngineSettings(`{ "features": { "liveToolOutput": "on" } }`, SOURCE))
-            .toThrow(/'features.liveToolOutput' must be true or false/);
+        expect(() => parseEngineSettings(`{ "features": { "steering": "on" } }`, SOURCE))
+            .toThrow(/'features.steering' must be true or false/);
     });
 
     /* A team can turn a feature on for everyone in a repository. */
     it("reads a feature flag from a workspace file", () => {
 
         expect(parseEngineSettings(
-            `{ "features": { "liveToolOutput": true } }`, SOURCE, "workspace").features)
-            .toEqual({ liveToolOutput: true });
+            `{ "features": { "steering": true } }`, SOURCE, "workspace").features)
+            .toEqual({ steering: true });
     });
 });
 
@@ -239,7 +241,7 @@ describe("mergeEngineSettings", () => {
         // asserted whole on purpose: a flag added without a default
         // would otherwise read as `undefined` at every call site and
         // never fire.
-        expect(merged.features).toEqual({ liveToolOutput: false, sessionCost: false, docDiff: true, steering: false, hideCopilotPremiumRequests: true, handover: true, toolResults: false, evals: false, fakeRuntime: false });
+        expect(merged.features).toEqual({ sessionCost: false, docDiff: true, steering: false, hideCopilotPremiumRequests: true, evals: false, fakeRuntime: false });
     });
 
     /* Per key, profile wins - a key the person set beats the team file, and the team file fills the rest. */
@@ -449,19 +451,19 @@ describe("mergeEngineSettings", () => {
         // Naming one flag leaves every other at its default rather than
         // switching them all off - `docDiff` stays on.
         expect(mergeEngineSettings(
-            scope("profile", { features: { liveToolOutput: true } }), scope("workspace")).features)
-            .toEqual({ liveToolOutput: true, sessionCost: false, docDiff: true, steering: false, hideCopilotPremiumRequests: true, handover: true, toolResults: false, evals: false, fakeRuntime: false });
+            scope("profile", { features: { steering: true } }), scope("workspace")).features)
+            .toEqual({ sessionCost: false, docDiff: true, steering: true, hideCopilotPremiumRequests: true, evals: false, fakeRuntime: false });
 
         expect(mergeEngineSettings(scope("profile"), scope("workspace")).features)
-            .toEqual({ liveToolOutput: false, sessionCost: false, docDiff: true, steering: false, hideCopilotPremiumRequests: true, handover: true, toolResults: false, evals: false, fakeRuntime: false });
+            .toEqual({ sessionCost: false, docDiff: true, steering: false, hideCopilotPremiumRequests: true, evals: false, fakeRuntime: false });
     });
 
     /* A flag that starts on is still a flag: a profile can turn it off. */
     it("lets a profile switch off a flag that is on by default", () => {
 
         expect(mergeEngineSettings(
-            scope("profile", { features: { handover: false } }), scope("workspace")).features)
-            .toEqual({ liveToolOutput: false, sessionCost: false, docDiff: true, steering: false, hideCopilotPremiumRequests: true, handover: false, toolResults: false, evals: false, fakeRuntime: false });
+            scope("profile", { features: { hideCopilotPremiumRequests: false } }), scope("workspace")).features)
+            .toEqual({ sessionCost: false, docDiff: true, steering: false, hideCopilotPremiumRequests: false, evals: false, fakeRuntime: false });
     });
 
     /* The diff view ships on, so the switch that matters is the one that takes it away. */
@@ -476,9 +478,9 @@ describe("mergeEngineSettings", () => {
     it("merges feature flags per flag, profile winning a clash", () => {
 
         expect(mergeEngineSettings(
-            scope("profile", { features: { liveToolOutput: true, docDiff: false } }),
+            scope("profile", { features: { steering: true, docDiff: false } }),
             scope("workspace", { features: { docDiff: true, sessionCost: true } })).features)
-            .toEqual({ liveToolOutput: true, sessionCost: true, docDiff: false, steering: false, hideCopilotPremiumRequests: true, handover: true, toolResults: false, evals: false, fakeRuntime: false });
+            .toEqual({ sessionCost: true, docDiff: false, steering: true, hideCopilotPremiumRequests: true, evals: false, fakeRuntime: false });
     });
 
     /* Per leaf, so a person's leaves and the team's leaves sit under one key. */

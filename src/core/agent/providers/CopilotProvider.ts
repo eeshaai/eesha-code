@@ -251,7 +251,6 @@ export class CopilotProvider implements AgentProvider {
                 config.signal,
                 resumed,
                 resumeCheck.reason,
-                settings.features.liveToolOutput,
                 settings.features.hideCopilotPremiumRequests);
 
             // The mode picked in the compose box - see `COPILOT_MODES`.
@@ -506,18 +505,11 @@ export class CopilotAgentSession implements AgentSession {
         /** Why not, when it is not - see {@link AgentSession.resumeFailure}. */
         public readonly resumeFailure?: string,
 
-        /**
-         * Whether a running tool's output is published as it arrives -
-         * the `liveToolOutput` feature flag, read from settings when
-         * the session was created.
-         */
-        liveOutput = false,
-
         /** The `hideCopilotPremiumRequests` feature flag - see {@link copilotCharge}. */
         private readonly hidePremiumRequests = false
     ) {
 
-        this.translator = new CopilotEventTranslator(() => Date.now(), liveOutput, hidePremiumRequests);
+        this.translator = new CopilotEventTranslator(() => Date.now(), hidePremiumRequests);
 
         this.id = session.sessionId;
 
@@ -1223,22 +1215,15 @@ export class CopilotEventTranslator {
     /** When each buffer last published - see {@link DELTA_INTERVAL_MS}. */
     private readonly lastDelta = new Map<string, number>();
 
-    /**
-     * A running call's output so far, by call id - only while
-     * {@link liveOutput} is on. Dropped as the call completes.
-     */
+    /** A running call's output so far, by call id. Dropped as the call completes. */
     private readonly output = new Map<string, string>();
 
     /**
      * @param now Injected so a test can pin the throttle rather than
      *            wait out real milliseconds.
-     * @param liveOutput Whether a running tool's output is published as
-     *            it arrives - the `liveToolOutput` feature flag. Off,
-     *            the CLI's partial-result events are dropped.
      */
     constructor(
         private readonly now: () => number = () => Date.now(),
-        private readonly liveOutput = false,
 
         /** Leave premium requests out of every charge - see {@link copilotCharge}. */
         private readonly hidePremiumRequests = false
@@ -1844,15 +1829,15 @@ export class CopilotEventTranslator {
      * times a second, and the tail is the part anyone is watching for.
      *
      * `other` is the "nothing to say" answer, which every consumer
-     * already drops: the flag being off, a chunk that is empty, a call
-     * with no id to attach it to, and a throttled chunk all take it.
+     * already drops: a chunk that is empty, a call with no id to attach
+     * it to, and a throttled chunk all take it.
      */
     private printing(event: SdkEvent, data: Record<string, unknown>): AgentEvent {
 
         const callId = asText(data.toolCallId);
         const piece = asText(data.partialOutput);
 
-        if (!this.liveOutput || !piece || !callId)
+        if (!piece || !callId)
             return { ...this.common(event), kind: "other" };
 
         // Not published: the question the agent asked is drawn as a

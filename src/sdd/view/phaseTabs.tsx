@@ -28,7 +28,7 @@ export function usePhaseTabs(ctx: RunState & ImplementState & DocEditing & DocPa
 
     const {
         props, specStages, isRunning, startPhase, startTasks, queuedTasks, openFile, logsByTask,
-        stopPhase, sessionCost, toolResults, docDiff,
+        stopPhase, sessionCost, docDiff,
         problems, docStage, artifact, content, draftingStage, current, promptPath,
         promptText, setPanePick, pointPane, tabIds, pluginTabs,
         editing, diffing, closing, setClosing, editorRef, blockRef, typeScale, hoverLine,

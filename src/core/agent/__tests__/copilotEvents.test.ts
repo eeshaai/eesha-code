@@ -377,7 +377,7 @@ describe("everything else the runtime does", () => {
     /* The `hideCopilotPremiumRequests` feature flag: credits only. */
     it("leaves premium requests out when told to, and keeps the credits", () => {
 
-        const usage = new CopilotEventTranslator(() => 0, false, true).translate(event("assistant.usage",
+        const usage = new CopilotEventTranslator(() => 0, true).translate(event("assistant.usage",
             { model: "claude-opus-4", inputTokens: 100, outputTokens: 10, cost: 3, copilotUsage: { totalNanoAiu: 1250000000 } }));
 
         expect(lineOf(usage)).toBe("Model call claude-opus-4 - 100 in, 10 out - 1.25 credits");
@@ -527,34 +527,17 @@ describe("an MCP call that said why it was made", () => {
 });
 
 /**
- * A running command's output, behind the `liveToolOutput` flag. The
- * translator is the whole of the feature on the engine side: the flag
- * off means the CLI's partial-result events never become anything.
+ * A running command's output. The translator is the whole of the
+ * feature on the engine side: it turns the CLI's partial-result events
+ * into `tool.output` events.
  */
 describe("a running tool's output", () => {
 
-    /** A translator with the flag on and a clock a test can move. */
+    /** A translator with a clock a test can move. */
     function live(clock: { at: number }) {
 
-        return new CopilotEventTranslator(() => clock.at, true);
+        return new CopilotEventTranslator(() => clock.at);
     }
-
-    it("says nothing at all when the flag is off", () => {
-
-        const translator = new CopilotEventTranslator();
-
-        translator.translate(event("tool.execution_start", {
-            toolName: "bash",
-            toolCallId: "call-1"
-        }));
-
-        const printed = translator.translate(event("tool.execution_partial_result", {
-            toolCallId: "call-1",
-            partialOutput: "Building...\n"
-        }));
-
-        expect(printed.kind).toBe("other");
-    });
 
     it("carries everything the call has printed, not just the newest piece", () => {
 

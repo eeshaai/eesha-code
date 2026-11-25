@@ -130,9 +130,8 @@ export type AgentEvent =
      * its `tool.end`, and keeping every step of a growing log would
      * store the same output over and over.
      *
-     * Only sent when the `liveToolOutput` feature flag is on, and only
-     * by providers whose runtime streams tool output at all. A
-     * consumer must work without it.
+     * Only sent by providers whose runtime streams tool output at all.
+     * A consumer must work without it.
      */
     | (AgentEventCommon & {
         kind: "tool.output";

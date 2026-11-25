@@ -71,7 +71,7 @@ describe("what the page shows", () => {
         expect(view.runtimes.map(runtime => runtime.id).slice(0, 2)).toEqual(["ghcp", "claude"]);
         expect(view.runtimes.filter(runtime => runtime.shown).map(runtime => runtime.id)).toEqual(["claude"]);
         expect(view.flags.map(flag => flag.name)).toEqual([...PAGE_FLAGS]);
-        expect(view.flags.find(flag => flag.name === "handover")?.on).toBe(true);
+        expect(view.flags.find(flag => flag.name === "hideCopilotPremiumRequests")?.on).toBe(true);
         expect(view.runtimes.every(runtime => !runtime.own)).toBe(true);
     });
 

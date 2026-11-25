@@ -64,8 +64,7 @@ export interface ComposeAi {
     noMode?: boolean;
 
     /**
-     * The Handover button, when the `handover` flag is on and the chat
-     * has started.
+     * The Handover button, once the chat has started.
      */
     handover?: ComposeHandover;
 }
@@ -371,13 +370,6 @@ export interface ChatViewProps {
      * recorded, so turning the flag on shows the whole history back.
      */
     showCost?: boolean;
-
-    /**
-     * Whether an opened tool card shows what the finished call returned.
-     * The `toolResults` feature flag. Absent or false, the default, it
-     * shows only whether the call worked and how long it took.
-     */
-    showToolResults?: boolean;
 }
 
 /**
@@ -427,9 +419,8 @@ interface ToolCall {
 
     /**
      * What the call has printed so far, while it is still running -
-     * only when the `liveToolOutput` feature flag is on and the
-     * provider streams it. It is dropped as the call finishes: the
-     * outcome is the record of what came back.
+     * only when the provider streams it. It is dropped as the call
+     * finishes: the outcome is the record of what came back.
      */
     output?: string;
 
@@ -1618,11 +1609,8 @@ export function jumpTargets(tops: readonly number[], room: number): { up?: numbe
  * call drawn by its kind (see `ToolBody`): a command as a terminal, an
  * edit as old text over new, anything else as its arguments.
  */
-function ToolRow({ call, showResult, onOpenFile }: {
+function ToolRow({ call, onOpenFile }: {
     call: ToolCall;
-
-    /** The `toolResults` flag: show what a finished call returned. */
-    showResult?: boolean;
 
     /** Opens a file a read was about, from the link on its row. */
     onOpenFile?(path: string): void;
@@ -1641,7 +1629,7 @@ function ToolRow({ call, showResult, onOpenFile }: {
     // why it failed, and is already shown under its row. The providers
     // keep only the start of a result and end a cut one with "...", so
     // the card says so rather than pass it off as all of it.
-    const returned = showResult && call.outcome && !failed ? call.outcome.detail ?? "" : "";
+    const returned = call.outcome && !failed ? call.outcome.detail ?? "" : "";
     const output = returned.endsWith("...")
         ? `${returned}\n\n(Cut short - only the start of what the tool returned is kept.)`
         : returned;
@@ -3588,11 +3576,8 @@ function reuseTurns(previous: readonly Turn[], next: Turn[]): Turn[] {
  * kept stable (see `ChatView`), a streamed chunk re-draws only the row
  * that is being written, not the whole conversation above it.
  */
-const TurnRow = memo(function TurnRow({ turn, named, stamped, askLive, canAnswer, showToolResults, onRerun, onGoBack, onOpenFile, onRetry, retryAgain }: {
+const TurnRow = memo(function TurnRow({ turn, named, stamped, askLive, canAnswer, onRerun, onGoBack, onOpenFile, onRetry, retryAgain }: {
     turn: Turn;
-
-    /** The `toolResults` flag - see {@link ChatViewProps.showToolResults}. */
-    showToolResults: boolean;
 
     /** Whether to show which sub-agent spoke - it changed from the row before. */
     named: boolean;
@@ -3632,7 +3617,7 @@ const TurnRow = memo(function TurnRow({ turn, named, stamped, askLive, canAnswer
                         calls={turn.calls.map(call => ({
                             key: call.id,
                             status: !call.outcome ? "pending" as const : call.outcome.ok === false ? "danger" as const : "success" as const,
-                            content: <ToolRow call={call} showResult={showToolResults} onOpenFile={onOpenFile} />
+                            content: <ToolRow call={call} onOpenFile={onOpenFile} />
                         }))}
                         summary={toolSummary(turn.calls.map(call => call.name))}
                         // The time shows only once every call has said how long it took.
@@ -3703,7 +3688,7 @@ const TurnRow = memo(function TurnRow({ turn, named, stamped, askLive, canAnswer
 export default function ChatView({
     entries, emptyText, onAnswer, onRerun, onGoBack, onSend, searchFiles, searchPaths, onStop, stopTitle, onOpenFile, onOpenContextFile, running, resumable, composeDraft, onComposeDraftChange, composePresets,
     composeAi, composeAiInToolbar, composeCapitalNames, showMeters = true, onRefreshModels, composeLevels, savedAnswers, composeTools, composeHeader, composeAddFiles, onComposeFilesAdded, composeCommands, composeSendOff, composePlaceholder,
-    spentBefore, modelsBefore, phaseUsage, showCost, onCompact, showToolResults
+    spentBefore, modelsBefore, phaseUsage, showCost, onCompact
 }: ChatViewProps) {
 
     // What the session has cost so far, what its last turn cost, which
@@ -4098,7 +4083,6 @@ export default function ChatView({
                                 stamped={turn.id === stampedId}
                                 askLive={askLive}
                                 canAnswer={onAnswer !== undefined}
-                                showToolResults={showToolResults === true}
 
                                 // Only the prompt can be rerun; an answer
                                 // on the same side is not the instruction.

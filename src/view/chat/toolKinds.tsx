@@ -199,7 +199,7 @@ export interface ToolBodyProps {
     /** What a running command has printed so far. */
     live?: string;
 
-    /** What a finished call returned - only with the `toolResults` flag. */
+    /** What a finished call returned. */
     output?: string;
 }
 

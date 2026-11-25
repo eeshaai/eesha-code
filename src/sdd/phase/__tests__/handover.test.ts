@@ -3,7 +3,7 @@ import { RunEvent } from "../../../core/events/runEvents";
 import { goBackPrompt, handoverStartPrompt, handoverTranscript } from "../handover";
 
 /*
- * The Handover button's file and first message (the `handover` flag).
+ * The Handover button's file and first message.
  */
 describe("handoverTranscript", () => {
 

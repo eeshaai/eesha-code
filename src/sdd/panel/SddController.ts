@@ -916,11 +916,7 @@ export class SddController {
 
             // On only when the settings say so. When settings cannot
             // be read at all, every flag reads as off.
-            docDiff: settings?.features.docDiff === true,
-
-            handover: settings?.features.handover === true,
-
-            toolResults: settings?.features.toolResults === true
+            docDiff: settings?.features.docDiff === true
         });
     }
 

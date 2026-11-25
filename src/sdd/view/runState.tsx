@@ -28,7 +28,7 @@ import { SddViewProps } from "../../view/templates/TemplateRunView";
 
 export function useRunState(props: SddViewProps) {
 
-    const { specStages, documents, requestDocument, saveDocument, gate, decide, isRunning, title, startPhase, startTasks, runCommand, runWorkflow, workflows, queuedTasks, waitingTasks, markDone, openSession, taskSessions, openFile, logsByTask, taskStatuses, stopPhase, sessionCost, toolResults, docDiff, stopAfterCurrent, setStopAfterCurrent, nextSessionAt, runningCommands, stopCommand } = props;
+    const { specStages, documents, requestDocument, saveDocument, gate, decide, isRunning, title, startPhase, startTasks, runCommand, runWorkflow, workflows, queuedTasks, waitingTasks, markDone, openSession, taskSessions, openFile, logsByTask, taskStatuses, stopPhase, sessionCost, docDiff, stopAfterCurrent, setStopAfterCurrent, nextSessionAt, runningCommands, stopCommand } = props;
 
     /** Seconds left before the next implementation session starts, during the wait between two. */
     const [nextSessionIn, setNextSessionIn] = useState<number | undefined>();
@@ -1330,7 +1330,7 @@ export function useRunState(props: SddViewProps) {
         props, specStages, documents, requestDocument, saveDocument, gate, decide, isRunning, title,
         startPhase, startTasks, runCommand, runWorkflow, workflows, queuedTasks, waitingTasks,
         markDone, openSession, taskSessions, openFile, logsByTask, taskStatuses, stopPhase,
-        sessionCost, toolResults, docDiff, stopAfterCurrent, setStopAfterCurrent, nextSessionAt, runningCommands, stopCommand,
+        sessionCost, docDiff, stopAfterCurrent, setStopAfterCurrent, nextSessionAt, runningCommands, stopCommand,
         nextSessionIn, setNextSessionIn, notes, saveNotes,
         baselines, requestBaseline, notesToChat,
         problems, aiChoice, setAiChoice, pluginApps, pluginSandboxed, pluginBridge,

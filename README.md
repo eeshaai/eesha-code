@@ -287,7 +287,7 @@ Memory is a connector too, with nothing to sign in to. It keeps short facts betw
    - **Denied tools** - the runtime's own tools to take away, by name, separated by commas, for example `fs_write,fs_read` (`eesha.runtimes.<id>.toolsOff`). Copy a name from the log: each tool call's line shows it in brackets after the title. Used from the next session start or reopen. A runtime not found has the box only when tools are already denied for it.
    - **Add a runtime** takes an id, a command and its arguments. Before it is saved, the program is started once and sent ACP's first message; it is added only if it answers as an ACP agent within 20 seconds. It is stopped right after, and no session is opened. It is saved in `ai.acpAgents`. Environment values go in the settings.json text box.
    - Runtimes you added are tagged "Yours" and can be removed. Built-in ones cannot.
-5. Features - a table of the feature flags that matter on this page, with what each one does: `evals` (the Evaluator, off by default - see 3.11), `handover`, `steering`, `toolResults`, `liveToolOutput`, `sessionCost` and `hideCopilotPremiumRequests`.
+5. Features - a table of the feature flags that matter on this page, with what each one does: `evals` (the Evaluator, off by default - see 3.11), `steering`, `sessionCost` and `hideCopilotPremiumRequests`.
 6. Storage - how many files are in `trash/`, with Empty trash, and how many scratch folders belong to deleted sessions, with Remove. Each asks first. Neither can be taken back.
 
 A session on screen picks a change up at once; a turn already running keeps what it started with.

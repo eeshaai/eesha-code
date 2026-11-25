@@ -234,7 +234,7 @@ export type ToSddView =
      * because it is read fresh from settings on every redraw and the
      * spec itself is not.
      */
-    | { type: "features"; sessionCost: boolean; docDiff: boolean; handover?: boolean; toolResults?: boolean }
+    | { type: "features"; sessionCost: boolean; docDiff: boolean }
 
     /** Every note on this spec. */
     | { type: "notes"; notes: ReviewNote[] }

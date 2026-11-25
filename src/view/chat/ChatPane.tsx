@@ -115,12 +115,6 @@ export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles,
     const [ai, setAi] = useState<{ choice: AiChoiceMessage; current: StageAi; locked?: boolean } | undefined>();
     const [sessionCost, setSessionCost] = useState(false);
 
-    /** The `toolResults` flag - what a finished tool call returned, on its card. */
-    const [toolResults, setToolResults] = useState(false);
-
-    /** The `handover` flag. */
-    const [handoverOn, setHandoverOn] = useState(false);
-
     /** The host has a ">" list - see `ChatHost.searchPaths`. */
     const [pathsOn, setPathsOn] = useState(false);
 
@@ -273,9 +267,7 @@ export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles,
             else if (message.type === "features") {
 
                 setSessionCost(message.sessionCost);
-                setHandoverOn(message.handover === true);
                 setPathsOn(message.paths === true);
-                setToolResults(message.toolResults === true);
             }
         };
 
@@ -368,7 +360,6 @@ export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles,
                 running={running}
                 resumable={resumable}
                 showCost={sessionCost}
-                showToolResults={toolResults}
                 onSend={(text, sent, tools) => {
 
                     // A variant's text is saved, never sent - the host puts it back in the box.
@@ -418,7 +409,7 @@ export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles,
                         onPick: pick => post({ type: "setAiChoice", pick }),
                         locked: started || ai.locked === true,
                         ...(ai.locked ? { held: true } : {}),
-                        ...(handoverOn && started && !variantBox
+                        ...(started && !variantBox
                             ? {
                                 handover: {
                                     onStart: pick => post({ type: "handover", ...pick }),

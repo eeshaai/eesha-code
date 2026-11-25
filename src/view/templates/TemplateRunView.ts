@@ -520,13 +520,6 @@ export type SddViewProps = Pick<TemplateRunViewProps,
         sessionCost?: boolean;
 
         /**
-         * The `toolResults` feature flag: whether an opened tool card
-         * shows what the finished call returned. Off - the default - it
-         * shows only whether the call worked and how long it took.
-         */
-        toolResults?: boolean;
-
-        /**
          * The `docDiff` feature flag: whether the Doc tab offers "What
          * changed", and the red-and-green view behind it. Off - the
          * default, and what a surface that passes nothing gets - the

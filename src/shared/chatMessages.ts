@@ -248,10 +248,10 @@ export type ToChatView =
     | { type: "pathMatches"; requestId: number; items: PathMatch[] }
 
     /**
-     * The `sessionCost`, `handover` and `toolResults` feature flags.
+     * The `sessionCost` feature flag.
      * `paths`: the server has a ">" list (the connectors).
      */
-    | { type: "features"; sessionCost: boolean; handover?: boolean; toolResults?: boolean; paths?: boolean }
+    | { type: "features"; sessionCost: boolean; paths?: boolean }
 
     | { type: "history"; chats: ChatSummary[] }
 

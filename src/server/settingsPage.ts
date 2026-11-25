@@ -24,7 +24,7 @@ import { scratchStats, trashStats } from "./storage";
  * The feature flags that change something in Eesha Code. The others
  * (spec documents) belong to the engine.
  */
-export const PAGE_FLAGS = ["evals", "handover", "steering", "toolResults", "liveToolOutput", "sessionCost", "hideCopilotPremiumRequests"] as const;
+export const PAGE_FLAGS = ["evals", "steering", "sessionCost", "hideCopilotPremiumRequests"] as const;
 
 const THEMES: readonly ThemeChoice[] = ["dark", "light", "system"];
 
