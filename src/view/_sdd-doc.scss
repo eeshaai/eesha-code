@@ -1,0 +1,913 @@
+@use "scale" as *;
+
+// ==========================================================================
+// The reading surface
+// ==========================================================================
+//
+// Everything below hangs off one fact: every rendered block carries
+// `data-line`, the file's own line number. The gutter is measured from
+// it, hover and the pin select on it, a double-click splices the source
+// lines it names, the change bars test it, and a note anchors to the
+// text on it. Six features, one attribute.
+// ==========================================================================
+
+// The document and its rail, side by side. `min-height: 0` because a
+// flex child will not scroll inside a flex parent without it, and the
+// document pane is the thing that scrolls.
+.sdd-doc {
+
+    &__split {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    &__split>.sdd-doc__body {
+        flex: 1;
+        min-width: 0;
+
+        padding-right: var(--spacing-lg);
+    }
+
+    // The Doc and Prompt tabs' own buttons, in the footer's left part
+    // between the outline's switch and the file name - see `docInfo` in
+    // SddRunView.tsx. Kept whole: the file name gives way first.
+    &__footer-tools {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+    }
+
+    // The file the tab is about, in the panel's footer - see `pathLine` in
+    // SddRunView.tsx.
+    //
+    // Quiet and monospaced: it is a machine's name for the file, not a
+    // heading, and it should be findable when wanted and ignorable when
+    // not. The file name only, on one line, capped. The tooltip has the
+    // whole path.
+    &__file-row {
+        flex: 0 1 auto;
+        max-width: 32rem;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+    }
+
+    &__file {
+        flex: 0 1 auto;
+        min-width: 0;
+        display: flex;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--color-fg-muted);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:hover,
+        &:focus-visible {
+            color: var(--color-link);
+            text-decoration: underline;
+        }
+    }
+
+    &__file-name {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    // Copies the full path. Always visible, unlike `.chat-copy`, since
+    // there is no hovered turn here to reveal it - it sits after the
+    // path and stays as quiet as the path does.
+    &__copy {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        padding: 0 2px;
+        border: none;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--color-fg-muted);
+        font-family: inherit;
+        font-size: var(--font-size-xs);
+        cursor: pointer;
+
+        &:hover,
+        &:focus-visible {
+            background: var(--color-bg-hover);
+            color: var(--color-fg);
+        }
+
+        &--done {
+            color: var(--color-primary);
+        }
+
+        &--failed {
+            color: var(--color-error);
+        }
+
+        &__note {
+            white-space: nowrap;
+        }
+    }
+
+    // Who else an edit to this file lands on - drawn on the Prompt tab
+    // only, where the file belongs to the style rather than to the spec
+    // in front of you.
+    &__shared {
+        flex: none;
+        margin: 0 0 var(--spacing-sm);
+        color: var(--color-fg-muted);
+        font-size: var(--font-size-xs);
+    }
+
+    // The box the gutter is laid over and every block is measured against.
+    // Positioned, so a mark's `top` means "from the top of the document".
+    &__reading {
+        position: relative;
+    }
+
+    // The margin: a line range, a note mark, and a gap.
+    //
+    // `--gutter-chars` comes from React and is exactly the characters the
+    // widest range in this document needs - "1504-1506" is nine.
+    //
+    // 0.62 of the font size per character is the budget. A digit in the
+    // mono stack this uses measures 0.549, and the widest fallback in it
+    // is under 0.62, so the difference is the safety margin, and the longest
+    // range still has room to spare at every text size.
+    //
+    // Multiplied by `--font-size-xs` rather than by a fixed rem, because
+    // the numbers grow with the reader's text size and a column that did
+    // not would clip them at 200%.
+    &__reading {
+        // Between the range and the note mark. Without it the two touch,
+        // because the range is flush right and the mark starts where the
+        // range's box ends.
+        --gutter-gap: 0.3rem;
+
+        // 0.56 rather than 0.62: still above the 0.549 measured
+        // digit width noted below, just with less slack given away on
+        // every row.
+        --gutter-num: calc(var(--gutter-chars, 8) * 0.56 * var(--font-size-xs) + var(--gutter-gap));
+
+        // The gutter, plus a smaller version of the same breathing gap.
+        padding-left: calc(var(--gutter-num) + 1.3rem);
+    }
+
+    // The reader's text size, on both files this panel renders: the
+    // document, and the prompt behind it. Two selectors rather than one
+    // shared class, because everything above this is the gutter's and
+    // the prompt has no gutter.
+    &__reading,
+    & .sdd-prompt {
+        // The reader's own text size, applied to every size token the
+        // document uses - so headings, prose, inline code and the margin's
+        // marks all grow together while the panel's chrome stays put.
+        //
+        // Redeclared here rather than multiplied into `:root`, because a
+        // custom property is substituted where it is DECLARED, not where it
+        // is used: `--font-size-base: calc(1rem * var(--type-scale))` on
+        // `:root` resolves against root's own scale of 1 and inherits that
+        // fixed pixel value down, so setting `--type-scale` deeper changes
+        // nothing at all. It has to be declared on the element that carries
+        // the multiplier.
+        //
+        // The literals below are the `:root` values above. They are the one
+        // thing in this file that must be changed in two places.
+        --font-size-xs: calc(0.85rem * var(--type-scale, 1));
+        --font-size-sm: calc(0.92rem * var(--type-scale, 1));
+        --font-size-base: calc(1rem * var(--type-scale, 1));
+        --font-size-md: calc(1.15rem * var(--type-scale, 1));
+        --font-size-lg: calc(1.38rem * var(--type-scale, 1));
+    }
+}
+
+.md-gutter {
+
+    position: absolute;
+    top: 0;
+    left: 0;
+
+    // Narrower than the padding: the difference is the gap.
+    width: calc(var(--gutter-num) + 1rem);
+    user-select: none;
+    border-right: 1px solid var(--color-border-subtle);
+
+    // One row per block, placed at the block's own top. Absolute rather
+    // than in flow, because a rendered block's height is decided by
+    // wrapping, images and diagrams - none of which a parallel column can
+    // predict.
+    //
+    // As tall as the whole block, so the note mark centres against the
+    // block rather than against its first line. The line number opts out
+    // of that and stays on the first line (see `&__num`).
+    &__row {
+        position: absolute;
+        left: 0;
+        display: flex;
+        align-items: center;
+
+        // The note mark ends up hard against the text it is about, and
+        // the numbers right-align into a column behind it. The other way
+        // round would put the one thing you click furthest from the thing you
+        // click it for.
+        justify-content: flex-end;
+        width: calc(var(--gutter-num) + 1rem);
+
+        // No global reset in this stylesheet, so padding would grow the box
+        // past the width it was given.
+        box-sizing: border-box;
+    }
+
+    // The block's first line number. Mono and tabular so the column lines
+    // up down the page.
+    //
+    // Pinned to the top of the row and one line tall (the height comes
+    // from the measured line height), so it sits level with the block's
+    // first line. Centred on the block, a task's number would land on top of
+    // its first sub-item's number.
+    //
+    // Muted until you are on the block: at full strength down a whole
+    // document the column competes with the prose, which is what the
+    // reader is actually here to read.
+    &__num {
+        align-self: flex-start;
+        display: flex;
+        align-items: center;
+        padding-right: var(--gutter-gap);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        color: var(--color-fg-muted);
+        opacity: 0.45;
+        white-space: nowrap;
+    }
+
+    &__row--live .md-gutter__num,
+    &__row:hover .md-gutter__num {
+        opacity: 1;
+        color: var(--color-fg);
+    }
+
+    // The two things a block offers, stacked in the column nearest the
+    // text: start a note, and open the block for editing.
+    //
+    // Stacked rather than side by side. The margin's width is taken out
+    // of the document's, so a second column of marks would be paid for
+    // in the line length of every page - one column, two marks.
+    //
+    // On a block only one line tall the pair is taller than the row, so
+    // it hangs a few pixels past the block at each end. That costs
+    // nothing while the marks are hidden, and the `pointer-events` rule
+    // below is what stops an invisible overhang taking a click meant for
+    // the row underneath it.
+    &__tools {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 1rem;
+    }
+
+    &__mark {
+        border: none;
+        background: none;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1rem;
+        line-height: 1;
+        color: var(--color-fg-muted);
+        opacity: 0;
+
+        // Dead until its own row is the live one - see __tools.
+        pointer-events: none;
+        cursor: pointer;
+    }
+
+    // The `+` is a typed character rather than a drawing, so it takes its
+    // size from a font size where the mark below it takes its own from a
+    // viewBox.
+    &__note {
+        font-size: var(--font-size-lg);
+    }
+
+    // A live row's marks are drawn over the rows either side of it, which
+    // on a short block they overlap.
+    &__row--live,
+    &__row:hover {
+        z-index: 1;
+    }
+
+    // The mark appears for the block you are pointing at, and for the one
+    // you have pinned - the row the keyboard is on, where a control you can
+    // Tab to but cannot see is worse than one that is not there.
+    //
+    // `--live` is set from React because no selector can do it: the gutter
+    // is a sibling of the document, so a hovered paragraph cannot reach the
+    // mark beside it. A sibling selector such as `.sdd-block--pinned ~ *`
+    // cannot do it, because the mark is not inside the block.
+    &__row--live .md-gutter__mark,
+    &__row:hover .md-gutter__mark,
+    &__row:focus-within .md-gutter__mark,
+    &__mark:focus-visible {
+        opacity: 0.7;
+        pointer-events: auto;
+    }
+
+    &__row--live .md-gutter__mark:hover,
+    &__row:hover .md-gutter__mark:hover {
+        opacity: 1;
+        color: var(--color-fg);
+    }
+
+    // A block that already carries a note keeps its mark whatever the
+    // pointer is doing - that is a record, not an invitation.
+    &__note--has,
+    &__row--live .md-gutter__note--has,
+    &__row:hover .md-gutter__note--has {
+        opacity: 1;
+        color: var(--color-warning);
+    }
+}
+
+// Hover, and the pin.
+//
+// The `:has` rule is the one that matters. Hovering an `<li>` hovers
+// its `<ul>` too, and a loose list item renders as `li > p` - so
+// without it, three nested boxes light up for one paragraph. Only the
+// innermost hovered block keeps its background.
+//
+// `box-shadow` rather than padding, so the highlight has breathing room
+// without moving a single line of text. A layout that shifts under the
+// pointer is worse than no highlight at all.
+// A tint, not a slab.
+//
+// `--color-bg-hover` is a list-row colour: on a full-width block it
+// would paint a grey panel most of the way across the pane, which is much
+// louder than "your pointer is here" and make the document harder to
+// read rather than easier. A few per cent of the foreground reads as a
+// warmed line at any theme's contrast.
+//
+// The shadow is what gives the tint breathing room without padding -
+// padding would move the text under the pointer, and a document that
+// shifts as you read it is worse than no highlight at all.
+.md-body {
+
+    // What an outline click scrolls to lands a little below the pane's
+    // top edge rather than flush against it, so the block reads as the
+    // start of something and not as text cut off above.
+    & [data-line] {
+        scroll-margin-top: var(--spacing-md);
+    }
+
+    & [data-line]:hover {
+        background: color-mix(in srgb, var(--color-fg) 6%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-fg) 6%, transparent);
+        border-radius: var(--radius-sm);
+    }
+
+    & [data-line]:has([data-line]:hover) {
+        background: transparent;
+        box-shadow: none;
+    }
+
+    // Pinned: this is the line being read aloud.
+    //
+    // Stronger than hover and, unlike hover, it stays when the hand leaves
+    // the mouse - which in a meeting is most of the time. The bar on the
+    // left is what someone across the table can actually see.
+    // The bar carries the pin; the tint only says which block it belongs to.
+    //
+    // A strong fill would fight the text it is meant to point at. The bar
+    // is also what someone reads from across a meeting room, where a 14%
+    // tint is invisible on a projector.
+    //
+    // `border-left` rather than a shadow, because a shadow would sit six
+    // pixels to the left of the block and land on top of the gutter number.
+    & [data-line].sdd-block--pinned,
+    & [data-line].sdd-block--pinned:hover {
+        background: color-mix(in srgb, var(--color-primary) 9%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 9%, transparent);
+        border-left: 2px solid var(--color-primary);
+        padding-left: 0.5rem;
+        margin-left: calc(-0.5rem - 2px);
+        border-radius: var(--radius-sm);
+    }
+
+    & [data-line]:has(.sdd-block--pinned) {
+        background: transparent;
+        box-shadow: none;
+    }
+}
+
+// The block editor, laid over the block rather than replacing it, so
+// the document around it stays rendered and the reader keeps their
+// place.
+// Notes beside the line they are about.
+//
+// The reading measure stops the prose well short of the pane, and that
+// gap is empty on every screen wide enough to have one. A note in it
+// is read with the sentence it belongs to, rather than in a list that
+// makes you look up which line "line 23" is.
+//
+// The column is laid over the blocks' own right padding, so it costs
+// the document no width at all. Its left edge is measured, not
+// computed: the measure is in `ch`, which moves with the font and with
+// the size the reader has chosen.
+.md-margin {
+
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+
+    // Above the document, and stated rather than left to paint order.
+    //
+    // A block spans the pane - the reading measure is padding - so
+    // every block overlaps this column, and the one drawn last would take
+    // the clicks meant for a card sitting in its margin.
+    z-index: $z-inline-edit;
+
+    // The document underneath keeps its clicks; only the cards take
+    // theirs back.
+    pointer-events: none;
+
+    // Everything said about one line, in one box.
+    //
+    // Two notes on the same block are not two loose cards with nothing tying them together, which would make a reader work out from their position that both are about the same sentence. The group says it once, in a
+    // header, and holds them.
+    &__slot {
+        position: absolute;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        pointer-events: auto;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-elevated);
+        overflow: hidden;
+    }
+
+    // Which line the group is about, and the handle that folds it.
+    //
+    // Monospace, because it is a position in a file and reads beside the
+    // file name in the bar the same way. A whole row rather than a small
+    // chevron: the header is the only thing a folded group shows, so it must
+    // be easy to hit.
+    &__line {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        width: 100%;
+        box-sizing: border-box;
+        padding: 2px var(--spacing-sm);
+        border: none;
+        border-bottom: 1px solid var(--color-border-subtle);
+        background: color-mix(in srgb, var(--color-fg) 4%, transparent);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        color: var(--color-fg-muted);
+        text-align: left;
+        cursor: pointer;
+    }
+
+    // Hard against the right edge, not trailing the line number - "line 3 1"
+    // reads as one number badly split.
+    &__line .sdd-doc__count {
+        margin-left: auto;
+    }
+
+    &__line:hover {
+        color: var(--color-fg);
+        background: color-mix(in srgb, var(--color-fg) 8%, transparent);
+    }
+
+    // Folded, there is nothing under the header to divide it from.
+    &__line[aria-expanded="false"] {
+        border-bottom: none;
+    }
+}
+
+// The peek shows one line's notes and does not fold - it is already a
+// thing you opened deliberately.
+.md-peek .md-margin__line {
+    cursor: default;
+}
+
+// A card inside a group carries no frame of its own - the group is the
+// frame. What it keeps is the stripe, which is the one thing that
+// differs between one note and the next: open, dealt with, or being
+// written.
+.sdd-note {
+
+    &--margin {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        border: none;
+        border-left: 2px solid var(--color-warning);
+        border-radius: 0;
+        background: transparent;
+        font-size: var(--font-size-sm);
+    }
+
+    // A hairline between notes in the same group, and none above the first.
+    &--margin + .sdd-note--margin {
+        border-top: 1px solid var(--color-border-subtle);
+    }
+
+    &--margin.sdd-note--resolved {
+        border-left-color: var(--color-border);
+        opacity: 0.55;
+    }
+
+    &--margin.sdd-note--new {
+        border-left-color: var(--color-primary);
+        background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+    }
+}
+
+// The marks, when the cards will not fit.
+//
+// Same side as the cards they stand for - a note is a thing in the
+// right margin whether or not there is room to spell it out, and moving
+// that to the other edge on a narrow panel would make the reader learn
+// two places.
+.md-marks {
+
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1.5rem;
+
+    // Above the document, for the same reason the margin cards are: a
+    // block spans the pane, so every block overlaps this column, and the
+    // one drawn last would take the click meant for the mark sitting in it.
+    // A button under a paragraph cannot be pressed.
+    z-index: $z-inline-edit;
+
+    // The document underneath keeps its clicks; only the marks take
+    // theirs back.
+    pointer-events: none;
+
+    &__mark {
+        position: absolute;
+        right: 0;
+        display: inline-flex;
+
+        // The button spans the block; the icon sits in the middle of it.
+        align-items: center;
+        justify-content: flex-end;
+        gap: 2px;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--color-fg-muted);
+        opacity: 0.55;
+        cursor: pointer;
+        pointer-events: auto;
+    }
+
+    &__mark--open {
+        color: var(--color-warning);
+        opacity: 1;
+    }
+
+    &__mark:hover,
+    &__mark:focus-visible {
+        opacity: 1;
+    }
+}
+
+// What the mark opens: the card itself, actions and all.
+//
+// Deliberately not a preview. A note you can read but not resolve is a
+// note you have to go and find again somewhere else, and the whole
+// point of putting it beside the text was to stop that.
+//
+// Held on a short timer by the view, so the pointer can travel from the
+// mark into the buttons.
+.md-peek {
+
+    position: absolute;
+    right: 2rem;
+    z-index: $z-peek;
+    // Written through interpolation so Sass passes it along untouched:
+    // it would otherwise drop the inner `calc()`, which `min()` does not
+    // need.
+    width: #{"min(22rem, calc(100% - 4rem))"};
+    display: flex;
+    flex-direction: column;
+    filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.45));
+
+    // Over the text rather than tinted into it - a popup needs its own
+    // ground or the words underneath show through it. The group carries it,
+    // as in the margin.
+    & {
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-elevated);
+        overflow: hidden;
+    }
+}
+
+.sdd-block-edit {
+
+    position: absolute;
+    left: 1.3rem;
+    right: 0;
+    z-index: $z-inline-edit;
+    padding: var(--spacing-xs);
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    &__tools {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        margin-top: var(--spacing-xs);
+    }
+
+    &__hint {
+        margin-right: auto;
+        font-size: var(--font-size-xs);
+        color: var(--color-fg-muted);
+    }
+}
+
+// Reading tools. Square, quiet, and the same size as each other, so the
+// bar does not reflow as they come and go.
+// A square for an icon, wide enough for an icon and a count.
+//
+// Drawn icons, not text symbols: a symbol renders at a different weight
+// or size in each font, so a row of them would not line up. Every
+// button keeps a real name in `aria-label` and `title`.
+.sdd-doc {
+
+    // A library ghost button. Set here: one square size for the whole
+    // bar, and the on state.
+    &__toggle {
+        // The badge is placed against this box's corner.
+        position: relative;
+        gap: var(--spacing-xs);
+        white-space: nowrap;
+    }
+
+    &__toggle--on {
+        border-color: var(--color-border);
+        background: var(--color-bg-active);
+        color: var(--color-fg);
+    }
+
+    // A number that is part of what a button says - the text size on the
+    // size button, how many notes are folded away on a margin header.
+    // It reads as a word beside the label, which is what it is.
+    &__count {
+        font-size: var(--font-size-xs);
+        font-variant-numeric: tabular-nums;
+    }
+
+    // The text size buttons: a small A and a big A, so they read as
+    // "text size" rather than as a minus and a plus that could mean
+    // anything. Line height 1 keeps the big one from making the row
+    // taller.
+    &__type-a {
+        font-family: var(--font-family-default);
+        font-weight: 600;
+        line-height: 1;
+    }
+
+    &__type-a--small {
+        font-size: 0.7rem;
+    }
+
+    &__type-a--big {
+        font-size: 1.05rem;
+    }
+
+    // How many notes are open, on the notes icon's top right corner.
+    //
+    // A badge over the corner, not a count beside the icon: a count
+    // beside it would make that one button wider than the others in the
+    // bar, so the row of reading tools would stop lining up every time a
+    // note was left.
+    //
+    // It is 14px with a bold 10px numeral and a filled pill, so the digits
+    // sit on a solid colour instead of on the bubble's own strokes, and it
+    // never carries more than two characters.
+    //
+    // It takes no pointer events: the whole button is the target, and a
+    // click landing on the badge must still toggle the notes.
+    &__badge {
+        position: absolute;
+        top: 1px;
+        right: 1px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        min-width: 14px;
+        height: 14px;
+        padding: 0 3px;
+        border-radius: 999px;
+        background: var(--color-primary);
+        color: var(--color-status-ink);
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        pointer-events: none;
+    }
+}
+
+// Square, so an icon sits in the middle of it rather than in a box
+// sized for a word.
+// Full screen: the document takes the panel.
+//
+// Reading a spec to other people is not helped by seeing less of it at
+// once; the whole difficulty is holding a requirement and its acceptance
+// criteria on screen together. So this spends the pixels on content
+// rather than on emphasis, with no bigger type and no dimming.
+//
+// The panel does it (`phase-panel--full`): the header and the sessions
+// pane are hidden, not removed, and the footer stays, so the tools are
+// where they always are and leaving full screen restores the panel
+// exactly as it was. `sdd-doc--full` is only a marker on the document.
+.sdd-doc {
+
+    // The rail keeps its width in full screen.
+    //
+    // It does not widen - harmless on the right of the document, and wrong on the left: growing it would push the whole document sideways every time the mode is toggled, so the text would move under the reader for no reason they asked for.
+
+    // Pinning a block does not dim the rest of the document: new users would read it as the document breaking, not as a reading aid, and there is no control to turn it off. The pin bar alone marks the block.
+}
+
+// Headings are not sticky.
+//
+// A stuck heading stops moving with the document, and the gutter
+// measures every block with getBoundingClientRect against the reading
+// pane - so the number beside a stuck heading is measured once, at the
+// position it happened to be stuck at, and then scrolls away from it.
+// Re-measuring on every scroll frame to keep one heading in place would
+// be the only other way.
+//
+// So the headings keep scrolling, and a separate bar names them instead
+// - as a sticky scroll does. See `.sdd-crumbs` below.
+
+// ==========================================================================
+// The section bar - see `stickyChain` in SddRunView.tsx
+// ==========================================================================
+//
+// The heading the top of the pane is under, with its parents, pinned
+// over the text. The sticky box has no height, so the bar showing or
+// hiding moves no block - the gutter measured them where they are.
+.sdd-doc__body {
+    --crumbs-height: var(--control-height);
+}
+
+// A heading jumped to lands under the bar, not behind it.
+.sdd-doc__body .md-body [data-line] {
+    scroll-margin-top: var(--crumbs-height);
+}
+
+.sdd-crumbs {
+    position: sticky;
+
+    // A sticky box stops at the pane's padding, not its edge - the pane's
+    // top padding is `--spacing-md` in both layouts. Without this the
+    // text scrolled past in that gap would show above the bar.
+    top: calc(-1 * var(--spacing-md));
+    height: 0;
+
+    // Above the gutter's note and edit marks ($z-inline-edit), which
+    // would otherwise draw over it. Level with a reference card, which comes
+    // later in the pane and so still lands on top.
+    z-index: $z-peek;
+
+    &__bar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        box-sizing: border-box;
+        height: var(--crumbs-height);
+        padding: 0 var(--spacing-xs);
+        overflow: hidden;
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-bg);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        font-size: var(--font-size-sm);
+        white-space: nowrap;
+
+        // Keeps its height for the scroll reading - see `stickyChain`.
+        &--empty {
+            visibility: hidden;
+        }
+    }
+
+    &__sep {
+        flex: 0 0 auto;
+        color: var(--color-fg-muted);
+    }
+
+    // Parents give up room first; the last entry - the section itself -
+    // keeps its text longest.
+    &__item {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 0 var(--spacing-xs);
+        border: none;
+        border-radius: var(--radius-md);
+        background: none;
+        color: var(--color-fg-muted);
+        font: inherit;
+        cursor: pointer;
+
+        &:last-child {
+            flex-shrink: 0.2;
+            color: inherit;
+            font-weight: 600;
+        }
+
+        &:hover {
+            background: var(--color-bg-elevated);
+            color: inherit;
+        }
+    }
+}
+
+// ==========================================================================
+// The one question this surface asks
+// ==========================================================================
+//
+// Escape in the block editor over a draft nobody has saved: the UI library's
+// Modal. Small, though. The value popup is a window onto content; this
+// is a sentence and three buttons, and a card the width of the panel
+// would read as an error rather than as a question.
+.sdd-ask {
+    --ee-modal-max-width: 24rem;
+}
+
+// The plan worked from its own page: a checkbox row in tasks.md carries
+// a live box and the ▶ that starts it, ahead of its text. The disabled
+// box GFM draws for the same row is hidden, not removed, so the text
+// still reads exactly as written.
+.sdd-inline__row {
+
+    > input[type="checkbox"],
+    > p > input[type="checkbox"] {
+        display: none;
+    }
+}
+
+.sdd-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-right: var(--spacing-xs);
+    vertical-align: middle;
+
+    &__box {
+        margin: 0;
+        cursor: pointer;
+    }
+}
+
+// Which chat the Logs and AI Session tabs show, when an execution
+// phase has several open at once. The library's Select, at a width that
+// fits a lane's name.
+.sdd-lanes {
+    width: 12rem;
+}
+
+// A "loose" row - one with a blank line or a nested list under it - has
+// its text in a paragraph. Inline, so it follows the controls on the
+// same line instead of starting under them.
+.sdd-inline__row > .sdd-inline + p {
+    display: inline;
+}
+
+// The box is the row's marker; a bullet beside it is noise.
+.sdd-inline__row {
+    list-style: none;
+}
+
+

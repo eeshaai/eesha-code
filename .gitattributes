@@ -1,0 +1,3 @@
+# Prompt, style and schema files are read as text by the code and its tests.
+# They stay LF on every machine, also where git turns on Windows line endings.
+resources/** text eol=lf

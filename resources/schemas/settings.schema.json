@@ -1,0 +1,601 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Eesha Code settings",
+  "description": "The engine's settings file. One per scope: the workspace's .eesha/settings.json (the team's, committed) and ~/.eesha/settings.json (yours, on every repository). Merged per key, profile wins.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "sdd": {
+      "type": "object",
+      "description": "Spec-driven development settings.",
+      "additionalProperties": false,
+      "properties": {
+        "styles": {
+          "type": "array",
+          "description": "Style ids enabled for this workspace - the pipeline, the spec types, the prompts, one process per id. A spec's opening document says which of these it follows in its own 'style:' line; an untagged spec places only when exactly one style is listed here. Default: [custom].",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "default": [
+            "custom"
+          ]
+        },
+        "specsDir": {
+          "type": "string",
+          "description": "Where spec folders live. Relative to the workspace, or absolute for a root outside it. Default: .eesha/specs.",
+          "default": ".eesha/specs",
+          "defaultSnippets": [
+            {
+              "label": "${{ workspaceFolder }}",
+              "description": "The workspace's main folder.",
+              "body": "${{ workspaceFolder }}/specs"
+            },
+            {
+              "label": "${{ workspaceConfig }}",
+              "description": "<workspaceFolder>/.eesha.",
+              "body": "${{ workspaceConfig }}/specs"
+            },
+            {
+              "label": "${{ home }}",
+              "description": "The person's home directory.",
+              "body": "${{ home }}/specs"
+            },
+            {
+              "label": "${{ cwd }}",
+              "description": "The working directory this level runs in.",
+              "body": "${{ cwd }}/specs"
+            }
+          ]
+        },
+        "source": {
+          "description": "Where the work item behind a spec comes from. Leave unset to be asked per spec. A ${{ }} expression is accepted here and resolved before the value is read.",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "manual",
+                "ado",
+                "gh",
+                "file"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^\\$\\{\\{\\s*[\\w.]+\\s*\\}\\}$"
+            }
+          ]
+        },
+        "uses": {
+          "type": "string",
+          "description": "The plugin that runs SDD's ai stages. Default: ai@1.",
+          "default": "ai@1"
+        },
+        "nextSessionDelaySeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Seconds to wait between one implementation session and the next, so you can press Stop before the next one starts. 0 starts the next one at once. Default: 10.",
+          "default": 10
+        }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "description": "Per-plugin defaults (keyed by plugin reference, e.g. \"ai@1\") plus MCP servers and ACP agents.",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "examples": [
+              "ghcp",
+              "claude",
+              "kiro-cli",
+              "copilot-cli",
+              "claude-cli",
+              "gemini-cli",
+              "codex-cli",
+              "cursor-cli",
+              "opencode-cli"
+            ]
+          },
+          "description": "The runtimes your org uses, in the order the spec panel's runtime picker shows them - e.g. [\"ghcp\", \"kiro-cli\"]. Each must be a known runtime: ghcp, claude, or an ai.acpAgents id. The runtime ai@1 starts on (ai.\"ai@1\".provider, or ghcp) must be in the list. A providers: block may only be keyed by a listed runtime, and a phase or step may only run on one. Left out, every known runtime is offered. Your profile's list replaces the workspace's whole.",
+          "defaultSnippets": [
+            {
+              "label": "Copilot + Kiro",
+              "description": "Switch between Copilot and Kiro.",
+              "body": ["ghcp", "kiro-cli"]
+            }
+          ]
+        },
+        "mcpServers": {
+          "type": "object",
+          "description": "MCP server declarations - the standard mcpServers entry shape every MCP README shows, plus the one engine key, disabled. Which tools a session gets is not said here: that is the ai@1 task's mcp: arg, or the default under \"ai@1\".mcp below. ${{ env.NAME }} in any string value is expanded under the env gate below.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string",
+                "description": "The executable for a stdio server. Written portably (npx, not npx.cmd) - the engine makes it runnable per platform."
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "url": {
+                "type": "string",
+                "description": "The endpoint for an http server."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "stdio",
+                  "sse",
+                  "http",
+                  "local"
+                ],
+                "description": "The server's transport: stdio (a command this machine runs), sse or http (a url). Inferred from command/url when absent - a command means stdio, a url means http, so sse is the one a remote server must say itself. 'local' is an accepted alias for stdio.",
+                "examples": [
+                  "stdio",
+                  "sse",
+                  "http"
+                ]
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Environment for the server process. ${{ env.NAME }} reads the machine's value - if, and only if, something grants the name (env.allowed, the workflow's env: block, or the task's allowedEnv arg)."
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "timeout": {
+                "type": "number"
+              },
+              "disabled": {
+                "type": "boolean",
+                "description": "true skips the server entirely."
+              }
+            }
+          }
+        },
+        "acpAgents": {
+          "type": "object",
+          "description": "Agents that speak the Agent Client Protocol (https://agentclientprotocol.com), keyed by the id a task's provider: names. kiro-cli (Kiro's v3 engine), copilot-cli, claude-cli, gemini-cli, codex-cli, cursor-cli and opencode-cli are built in; declare one of those ids here to replace its command, or any other id to add an agent. Each is registered as a provider under that id, alongside ghcp and claude. ${{ env.NAME }} in env is expanded under the env gate below.",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "command"
+            ],
+            "properties": {
+              "command": {
+                "type": "string",
+                "description": "The executable that speaks ACP on stdio when run with args - e.g. \"kiro-cli\", \"claude-agent-acp\", \"copilot\"."
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Arguments that put the command into ACP mode - e.g. [\"acp\"], or [\"--acp\", \"--stdio\"]."
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Environment for the agent process. ${{ env.NAME }} reads the machine's value - if, and only if, something grants the name (env.allowed, the workflow's env: block, or the task's allowedEnv arg)."
+              },
+              "extensions": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "kiro-v3"
+                  ]
+                },
+                "description": "Vendor extras this agent runs with: kiro-v3 (credits, context meter and account usage for Kiro's v3 engine). Left out on a built-in id, the built-in one's list is kept; an empty list switches them off. Left out on any other id, none."
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/aiArgs"
+          }
+        ],
+        "description": "Default args for one plugin, keyed by its reference - e.g. \"ai@1\": { \"model\": \"auto\" }."
+      }
+    },
+    "env": {
+      "type": "object",
+      "description": "The gate on ${{ env.NAME }} where the value leaves the engine - an MCP server declaration. Elsewhere ${{ env.NAME }} needs no grant and only 'denied' applies. Deny wins over every grant, everywhere.",
+      "additionalProperties": false,
+      "properties": {
+        "allowed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Environment variable names an MCP server declaration's ${{ env.NAME }} may read. Names only, never values."
+        },
+        "denied": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names that are never readable, whatever else grants them."
+        }
+      }
+    },
+    "variables": {
+      "type": "object",
+      "description": "Your own names, read anywhere the engine resolves ${{ }}: tasks.yml, this file, an MCP declaration, and an SDD style's phase prompts. Each top-level key is read bare - \"Team\": { \"Name\": \"Payments\" } is ${{ Team.Name }}. Nest as deep as you like. A value may read ${{ home }}, ${{ env.NAME }} and other variables. Declared in both files, the two merge one leaf at a time and your profile file wins a clash; the run log says so. A name an expression already means (home, env, vars, params, run, cwd, workspaceFolder, workspaceConfig, spec, the run stamps) is refused.",
+      "additionalProperties": true
+    },
+    "defaultFoldersToIgnoreScanning": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Folders the workspace scan skips when the repository has no .gitignore to say so itself."
+    },
+    "debug": {
+      "type": "boolean",
+      "description": "Extra diagnostics, for you - and it takes the directory limit off an ai@1 session, so the agent may read and write anywhere you can, not only its cwd and your open folders. The shell sandbox goes off with it. Your profile file only (~/.eesha/settings.json) - a workspace settings.json that sets it is an error, because a committed file must not turn this on for everyone on the repository, and must not be able to unlock its own limits. Default: false.",
+      "default": false
+    },
+    "eesha": {
+      "type": "object",
+      "description": "Read by Eesha Code only - the browser chat server. Put it in ~/.eesha/settings.json.",
+      "additionalProperties": false,
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 7420,
+          "description": "The port Eesha Code listens on, on 127.0.0.1 only. Takes effect on the next 'eesha start'. Default: 7420."
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["dark", "light", "system"],
+          "default": "dark",
+          "description": "The page's colours: dark, light, or system (follows the computer's own setting). Changed on Eesha Code's settings page, it shows at once; changed in this file, on the next start. Default: dark."
+        },
+        "fontSize": {
+          "type": "integer",
+          "minimum": 11,
+          "maximum": 24,
+          "default": 16,
+          "description": "The page's text size in px, a whole number from 11 to 24. Changed on Eesha Code's settings page, it shows at once; changed in this file, on the next start. Default: 16."
+        },
+        "runtimes": {
+          "type": "object",
+          "description": "Per runtime id, what its sessions may use. A runtime not listed keeps all its tools.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "toolsOff": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "The runtime's own tools to take away, by the runtime's own names. Used from the next session start or reopen."
+              }
+            }
+          }
+        },
+        "connectors": {
+          "type": "object",
+          "description": "What each connector may reach and do. A connector with no entry is not connected. Sign-in is never kept here.",
+          "additionalProperties": false,
+          "properties": {
+            "ado": {
+              "type": "object",
+              "description": "Azure DevOps: the organization and project pairs in reach, and each source's access.",
+              "properties": {
+                "reach": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": { "org": { "type": "string" }, "project": { "type": "string" } },
+                    "required": ["org", "project"]
+                  }
+                },
+                "sources": {
+                  "type": "object",
+                  "properties": {
+                  "workitems": { "type": "string", "enum": ["off", "read", "write"] },
+                  "queries": { "type": "string", "enum": ["off", "read", "write"] },
+                  "repos": { "type": "string", "enum": ["off", "read", "write"] },
+                  "pulls": { "type": "string", "enum": ["off", "read", "write"] },
+                  "builds": { "type": "string", "enum": ["off", "read", "write"] },
+                  "releases": { "type": "string", "enum": ["off", "read", "write"] },
+                  "wiki": { "type": "string", "enum": ["off", "read", "write"] },
+                  "testplans": { "type": "string", "enum": ["off", "read", "write"] }
+                  }
+                }
+              }
+            },
+            "github": {
+              "type": "object",
+              "description": "GitHub: the owners and repos in reach, and each source's access.",
+              "properties": {
+                "reach": { "type": "array", "items": { "type": "string" } },
+                "sources": {
+                  "type": "object",
+                  "properties": {
+                  "repos": { "type": "string", "enum": ["off", "read", "write"] },
+                  "files": { "type": "string", "enum": ["off", "read", "write"] },
+                  "pulls": { "type": "string", "enum": ["off", "read", "write"] },
+                  "issues": { "type": "string", "enum": ["off", "read", "write"] },
+                  "actions": { "type": "string", "enum": ["off", "read", "write"] },
+                  "releases": { "type": "string", "enum": ["off", "read", "write"] },
+                  "discussions": { "type": "string", "enum": ["off", "read", "write"] },
+                  "projects": { "type": "string", "enum": ["off", "read", "write"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "description": "Feature flags - switches for features that ship on their own flag. Allowed in both the profile and the workspace settings.json; merged per flag, profile winning. An unknown flag name is an error, not a no-op.",
+      "additionalProperties": false,
+      "properties": {
+        "liveToolOutput": {
+          "type": "boolean",
+          "description": "Show a running command's output under its row in the log as it arrives, instead of only when the call finishes. Expand the row to read it. Copilot provider only - the Claude Agent SDK does not send output until the call ends. Default: false.",
+          "default": false
+        },
+        "sessionCost": {
+          "type": "boolean",
+          "description": "Show what a session cost in money - dollars, or another currency an ACP agent names - in the usage card above the compose box, for the last turn, this session, this phase and this whole spec. Copilot's credits and premium requests are an allowance rather than a sum you are charged, so they show either way and this flag does not hide them. Off, a Claude session's card shows the context window and the tokens each model read and wrote, and no money. The figures are recorded either way, so turning this on shows the whole history back. Default: false.",
+          "default": false
+        },
+        "docDiff": {
+          "type": "boolean",
+          "description": "Offer a \"What changed\" button on a spec document. It shows the document as a before and after - what went away in red, what arrived in green, everything that stayed as it is - with only the words that differ picked out inside a paragraph that was reworded. The comparison is against a copy of the document taken just before that phase last ran, kept in your profile; git is not involved. Off, the button is not offered and nothing else marks what changed. Default: true.",
+          "default": true
+        },
+        "steering": {
+          "type": "boolean",
+          "description": "Hand the project's steering files to AI chats: .md files anywhere in the chat's folders whose header has 'inclusion:'. 'always' files go on the first message of every new chat, 'fileMatch' files on an SDD implement wave whose Files: lines match the pattern, files with 'tags:' through a 'steering' tool the AI calls by tag, and 'manual' files when you type @name in a compose box. Off, no file is looked for and no chat gets the tool. Default: false.",
+          "default": false
+        },
+        "hideCopilotPremiumRequests": {
+          "type": "boolean",
+          "description": "Record only Copilot's credits for what a call charged, and leave out its premium requests. Copilot reports both whatever your plan is, so one of them is always a unit you are not billed in. Calls made while this is on lose the premium-request figure; older runs keep what they recorded. Default: true.",
+          "default": true
+        },
+        "handover": {
+          "type": "boolean",
+          "description": "Show a Handover button on a started chat. Handover asks for the new runtime and model, saves the conversation so far as a Markdown file in the workspace, and starts a new session that reads it and tells you where things stand. A started chat's runtime picker is locked either way, so with this off the only way to another runtime is New Session, which starts empty. Default: true.",
+          "default": true
+        },
+        "toolResults": {
+          "type": "boolean",
+          "description": "Show what a finished tool call returned when you open its card in the chat. Only a short, one-line start of the result is kept, so the card says when the text was cut. Off, a finished card shows only whether the call worked and how long it took; a failed call still shows why. Default: false.",
+          "default": false
+        },
+        "evals": {
+          "type": "boolean",
+          "description": "Offer the Evaluator page. It sends one message to up to six variants - a runtime, a model and a little setup each - and shows their chats side by side, with a report of each one's time, cost and tool calls. Each variant works in its own copy of the folder under ~/.eesha/evals, and nobody is asked: every tool call inside the copy runs, and one outside it is refused. Off, the page's link is hidden and its requests are refused; evaluations already made stay on disk. Default: false.",
+          "default": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "aiArgs": {
+      "type": "object",
+      "description": "Args for the plugin that runs an ai stage - the defaults every phase starts from. Merged per key, not per block, under whatever a style stage declares in its own ai: block.",
+      "additionalProperties": true,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "examples": [
+            "ghcp",
+            "claude",
+            "kiro-cli",
+            "copilot-cli",
+            "claude-cli",
+            "gemini-cli",
+            "codex-cli",
+            "cursor-cli",
+            "opencode-cli"
+          ],
+          "description": "Which agent runtime the session runs on. ghcp and claude use the vendor SDK; the -cli ids are built-in ACP agents (see ai.acpAgents), and any id you declare under ai.acpAgents works too. Default: ghcp, from ai@1's own manifest.",
+          "default": "ghcp"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model id, or 'auto' to let the provider pick. Passed through - the meaning is the provider's. Run the vendor CLI's model picker for the ids it accepts.",
+          "default": "auto"
+        },
+        "mcp": {
+          "$ref": "#/$defs/mcpSelection",
+          "description": "Which of ai.mcpServers every ai@1 session gets by default, and which of their tools - the baseline a task's or a style stage's own mcp: replaces whole. Both keys are allowlists; absent means all. A name ai.mcpServers does not declare fails the session, naming the declared ones. A server disabled there stays out even when named here."
+        },
+        "providers": {
+          "type": "object",
+          "description": "Overrides for one runtime, keyed by its id - e.g. { \"ghcp\": { \"reasoningEffort\": \"high\" } }. Every runtime takes the flat args beside this; a key here replaces one of them for that runtime only. A runtime with nothing to override needs no entry - which runtimes your org uses is ai.providers, not this. Each id must be in ai.providers (or a known runtime when that list is left out). The profile file beats the workspace file, per runtime and per key.",
+          "properties": {
+            "ghcp": {
+              "allOf": [
+                { "$ref": "#/$defs/providerBlock" },
+                { "$ref": "#/$defs/ghcpArgs" }
+              ]
+            }
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/providerBlock"
+          },
+          "defaultSnippets": [
+            {
+              "label": "ghcp + kiro-cli",
+              "description": "Copilot's own options, and Kiro's model.",
+              "body": {
+                "ghcp": {
+                  "model": "$1"
+                },
+                "kiro-cli": {
+                  "model": "$2"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "provider"
+            ],
+            "properties": {
+              "provider": {
+                "const": "ghcp"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/ghcpArgs"
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "required": [
+                "provider"
+              ]
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/ghcpArgs"
+          }
+        }
+      ]
+    },
+    "providerBlock": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model id for this runtime, or 'auto' to let it pick."
+        }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["provider"] },
+          { "required": ["uses"] },
+          { "required": ["providers"] }
+        ]
+      }
+    },
+    "ghcpArgs": {
+      "type": "object",
+      "description": "The args only a ghcp session takes, offered when the block runs on ghcp. Suggestions, not a whitelist: ai@1 passes every key through, so a name here is never required and a name missing here is never an error.",
+      "properties": {
+          "reasoningEffort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "description": "ghcp. How hard the model thinks. Only valid on a model whose capabilities report reasoningEffort - which 'auto' does not, so pin a model when you set this."
+          },
+          "contextTier": {
+            "type": "string",
+            "enum": [
+              "default",
+              "long_context"
+            ],
+            "description": "ghcp. 'long_context' pins the session to the larger context window."
+          },
+          "reasoningSummary": {
+            "type": "string",
+            "enum": [
+              "none",
+              "concise",
+              "detailed"
+            ],
+            "description": "ghcp. How much of the model's reasoning is summarised back."
+          },
+          "enableExperimentalMode": {
+            "type": "boolean",
+            "description": "ghcp. Turns on the runtime's experimental features for this session."
+          },
+          "githubMcpToolConfig": {
+            "type": "object",
+            "description": "ghcp. Which tools Copilot's built-in GitHub MCP server exposes. Unset gives its default set, which keeps context small. Written whole: a value here replaces one set lower down, it is not merged into it.",
+            "properties": {
+              "enableAllTools": {
+                "type": "boolean",
+                "description": "Use the read-write endpoint and ask for every toolset."
+              },
+              "additionalToolsets": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Toolsets to add on top of the default ones, e.g. [\"issues\", \"pull_requests\"]. [\"all\"] asks for all of them."
+              },
+              "additionalTools": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Tools by name. When not empty, this list replaces the default tool list rather than adding to it."
+              },
+              "enableInsidersMode": {
+                "type": "boolean",
+                "description": "Use the GitHub MCP server's insiders (preview) build."
+              },
+              "disableFormDeferral": {
+                "type": "boolean",
+                "description": "Run tools that would open a form directly instead. Needs MCP Apps on for the session."
+              }
+            }
+          }
+      }
+    },
+    "mcpSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What one session asks for out of the MCP servers ai.mcpServers declares. Both keys are allowlists; absence means all.",
+      "properties": {
+        "servers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Server keys as declared under ai.mcpServers, e.g. [\"ado\", \"github\"]. Absent means every declared server."
+        },
+        "tools": {
+          "type": "object",
+          "description": "Bare tool names per server key, e.g. { \"ado\": [\"wit_get_work_item\"] }. Absent means every tool of each selected server. A server named here must also be in 'servers' when 'servers' is given.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

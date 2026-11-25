@@ -1,0 +1,755 @@
+@use "scale" as *;
+
+// The Evaluator - see web/EvalPage.tsx. Two pages:
+//
+//   /eval          a form to make an evaluation, and the list of them
+//   /eval/<name>   one evaluation: a message box for all its variants,
+//                  then one column per variant, each a frame showing
+//                  that variant's own chat (web/EvalColumn.tsx)
+
+.evals {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    color: var(--color-fg);
+
+    h1,
+    h2 {
+        margin: 0;
+        font-weight: 600;
+    }
+
+    h1 { font-size: var(--font-size-lg); }
+
+    h2 { font-size: var(--font-size-md); }
+
+    code { font-family: var(--font-family-mono); }
+}
+
+// The list page scrolls as a whole; one evaluation never does - its columns scroll.
+.evals--list {
+    overflow-y: auto;
+}
+
+.evals__form {
+    display: flex;
+    flex-direction: column;
+    gap: space(4);
+    width: 100%;
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: space(6);
+    box-sizing: border-box;
+}
+
+.evals__pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: space(4);
+}
+
+.evals__field {
+    display: flex;
+    flex-direction: column;
+    gap: space(1);
+    min-width: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+}
+
+.evals__input,
+.evals__select,
+.evals__text {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: space(2) space(3);
+    border: 1px solid var(--color-border-input);
+    border-radius: var(--radius-md, 4px);
+    background: var(--color-bg-input);
+    color: var(--color-fg-input);
+    font: inherit;
+    font-size: var(--font-size-base);
+
+    &:focus-visible {
+        outline: 1px solid var(--color-focus);
+        outline-offset: -1px;
+    }
+
+    &:disabled {
+        color: var(--color-fg-muted);
+    }
+}
+
+.evals__text {
+    resize: vertical;
+    min-height: space(14);
+}
+
+.evals__hint,
+.evals__note {
+    margin: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+}
+
+.evals__problem {
+    margin: 0;
+    color: var(--color-error);
+}
+
+.evals__variant {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: space(3);
+    align-items: start;
+    padding: space(3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg, 6px);
+    background: var(--color-bg-elevated);
+}
+
+// One variant's fields: its name, runtime, model, mode and effort in a row, its extra text under them.
+.evals__variant-fields {
+    display: flex;
+    flex-direction: column;
+    gap: space(3);
+    min-width: 0;
+
+    .evals__text {
+        min-height: space(11);
+    }
+}
+
+.evals__variant-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: space(3);
+    align-items: end;
+}
+
+.evals__row {
+    display: flex;
+    align-items: center;
+    gap: space(3);
+    flex-wrap: wrap;
+}
+
+.evals__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: space(1);
+
+    a {
+        display: flex;
+        gap: space(3);
+        align-items: baseline;
+        padding: space(2) space(3);
+        border-radius: var(--radius-md, 4px);
+        color: var(--color-fg);
+        text-decoration: none;
+
+        &:hover {
+            background: var(--color-bg-hover);
+        }
+    }
+}
+
+.evals__list li {
+    display: flex;
+    align-items: baseline;
+
+    > a:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+}
+
+.evals__list .evals__list-report {
+    flex: 0 0 auto;
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+}
+
+.evals__list-facts {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+// One evaluation.
+
+.evals__bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: space(3);
+    padding: space(2) space(4);
+    border-bottom: 1px solid var(--color-border);
+
+    // One line: the folder's path is cut before the buttons wrap.
+    > * {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+}
+
+.evals__bar .evals__bar-facts {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+// Two buttons of which one is pressed: Live or Report, all messages or the first.
+.evals__switch {
+    display: inline-flex;
+    flex: 0 0 auto;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md, 4px);
+    overflow: hidden;
+}
+
+.evals__tab {
+    padding: space(1) space(3);
+    border: 0;
+    background: transparent;
+    color: var(--color-fg-muted);
+    font: inherit;
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+
+    & + & {
+        border-left: 1px solid var(--color-border-strong);
+    }
+
+    &:hover {
+        background: var(--color-bg-hover);
+    }
+
+    &[aria-pressed="true"] {
+        background: var(--color-bg-elevated);
+        color: var(--color-fg);
+        font-weight: 600;
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--color-focus);
+        outline-offset: -1px;
+    }
+}
+
+// Under the bar: the form for a variant, or the question before a delete.
+.evals__panel {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: space(3);
+    padding: space(3) space(4);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+
+    p {
+        margin: 0;
+    }
+}
+
+.evals__live {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    &[hidden] {
+        display: none;
+    }
+}
+
+.evals__all {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: space(2);
+    padding: space(3) space(4);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+}
+
+.evals__all-row {
+    display: flex;
+    align-items: flex-end;
+    gap: space(3);
+
+    .evals__field {
+        flex: 1 1 auto;
+        color: var(--color-fg);
+        font-size: var(--font-size-base);
+        font-weight: 600;
+    }
+
+    .evals__text {
+        font-weight: normal;
+        min-height: space(11);
+    }
+}
+
+// Three columns fit the page's smallest width. With more, each keeps a width it can be read at and the row scrolls sideways.
+.evals__columns {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(340px, 1fr);
+    overflow-x: auto;
+}
+
+.evals__columns--alone {
+    grid-auto-columns: minmax(0, 1fr);
+}
+
+.evals__column {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    & + & {
+        border-left: 1px solid var(--color-border);
+    }
+
+    &[hidden] {
+        display: none;
+    }
+}
+
+.evals__column-head {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: space(1);
+    padding: space(2) space(3);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+}
+
+.evals__column-line {
+    display: flex;
+    align-items: center;
+    gap: space(2);
+    min-width: 0;
+}
+
+.evals__column-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.evals__column-ai {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+}
+
+.evals__column-lock {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+}
+
+.evals__state {
+    margin-left: auto;
+    flex: 0 0 auto;
+    padding: 0 space(2);
+    border: 1px solid var(--color-border-strong);
+    border-radius: $radius-pill;
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+
+.evals__state--working {
+    border-color: var(--color-info);
+    color: var(--color-info);
+}
+
+.evals__frame {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    border: 0;
+    background: var(--color-bg);
+}
+
+// The report - see web/EvalReport.tsx.
+
+.evals__report {
+    display: flex;
+    flex-direction: column;
+    gap: space(4);
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: space(5) space(6) space(8);
+    box-sizing: border-box;
+
+    h3,
+    h4 {
+        margin: 0;
+        font-size: var(--font-size-base);
+        font-weight: 600;
+    }
+
+    h4 {
+        color: var(--color-fg-muted);
+        font-size: var(--font-size-sm);
+    }
+}
+
+.evals__table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg, 6px);
+}
+
+.evals__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-base);
+
+    th,
+    td {
+        padding: space(2) space(3);
+        border-bottom: 1px solid var(--color-border);
+        text-align: left;
+        vertical-align: top;
+    }
+
+    tr:last-child > * {
+        border-bottom: 0;
+    }
+
+    thead th {
+        background: var(--color-bg-elevated);
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    tbody th {
+        color: var(--color-fg-muted);
+        font-weight: normal;
+        white-space: nowrap;
+    }
+
+    td {
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+// The numbers table: its head (names and setup) stays at the top while the
+// report scrolls. `clip`, not `auto`: a box that scrolls sideways would hold
+// the head inside itself, so it would never stick to the page. The columns
+// share the width and long text wraps, so nothing needs a sideways scroll.
+.evals__table-wrap--sticky {
+    overflow: clip;
+}
+
+.evals__table--numbers {
+    table-layout: fixed;
+
+    th:first-child {
+        width: 170px;
+    }
+
+    th,
+    td {
+        overflow-wrap: anywhere;
+    }
+
+    thead {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    thead th {
+        white-space: normal;
+    }
+
+    // A sticky head loses the table's borders: draw its bottom line itself.
+    thead tr:last-child > * {
+        box-shadow: inset 0 -1px 0 var(--color-border);
+    }
+}
+
+.evals__table .evals__setup-row > th {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+    font-weight: normal;
+}
+
+// The Help window's list.
+.evals__help {
+    display: flex;
+    flex-direction: column;
+    gap: space(2);
+    margin: 0;
+    padding-left: space(5);
+    line-height: 1.5;
+}
+
+// The lowest value of its row - see `lowestOf`.
+.evals__table td.evals__lowest {
+    color: var(--color-success);
+    font-weight: 600;
+}
+
+.evals__table--files tbody th {
+    max-width: 520px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--color-fg);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-sm);
+}
+
+.evals__file {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+}
+
+.evals__file--added,
+.evals__file--modified {
+    color: var(--color-fg);
+}
+
+.evals__file--deleted {
+    color: var(--color-error);
+}
+
+.evals__cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: space(4);
+}
+
+.evals__card {
+    display: flex;
+    flex-direction: column;
+    gap: space(3);
+    min-width: 0;
+    padding: space(3) space(4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg, 6px);
+    background: var(--color-bg-elevated);
+}
+
+.evals__bars,
+.evals__slowest {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: space(1);
+    font-size: var(--font-size-sm);
+
+    li {
+        display: grid;
+        align-items: center;
+        gap: space(2);
+    }
+}
+
+// A kind of call is one row; pressed, it lists every call counted under it.
+.evals__bars > li {
+    display: block;
+}
+
+.evals__bar-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) 5em minmax(0, 1.2fr);
+    align-items: center;
+    gap: space(2);
+}
+
+.evals__kind {
+    > summary {
+        cursor: pointer;
+        list-style: none;
+        border-radius: var(--radius-md, 4px);
+
+        &::-webkit-details-marker {
+            display: none;
+        }
+
+        &:hover {
+            background: var(--color-bg-hover);
+        }
+
+        &:focus-visible {
+            outline: 1px solid var(--color-focus);
+        }
+
+        .evals__bar-label::before {
+            content: "+ ";
+            color: var(--color-fg-muted);
+        }
+    }
+
+    &[open] > summary .evals__bar-label::before {
+        content: "- ";
+    }
+
+    > .evals__slowest {
+        margin: space(1) 0 space(2) space(4);
+        max-height: 240px;
+        overflow-y: auto;
+    }
+}
+
+// The saved task picker, over the message box.
+.evals__task {
+    display: inline-flex;
+    align-items: center;
+    gap: space(2);
+    flex: 0 0 auto;
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+
+    .evals__select {
+        width: 280px;
+    }
+}
+
+.evals__all > .evals__row {
+    flex-wrap: nowrap;
+
+    .evals__hint {
+        min-width: 0;
+    }
+}
+
+.evals__table--findings {
+    tbody th {
+        max-width: 360px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--color-fg);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-sm);
+    }
+
+    td {
+        min-width: 180px;
+        font-size: var(--font-size-sm);
+    }
+}
+
+.evals__severity {
+    padding: 0 space(1);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md, 4px);
+    color: var(--color-fg-muted);
+    white-space: nowrap;
+}
+
+.evals__severity--high {
+    border-color: var(--color-error);
+    color: var(--color-error);
+}
+
+.evals__slowest li {
+    grid-template-columns: 5em minmax(0, 1fr);
+}
+
+.evals__bar-label,
+.evals__slowest-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.evals__slowest-title {
+    font-family: var(--font-family-mono);
+}
+
+.evals__bar-track {
+    height: space(2);
+    border-radius: $radius-pill;
+    background: var(--color-bg-hover);
+    overflow: hidden;
+}
+
+.evals__bar-fill {
+    display: block;
+    height: 100%;
+    min-width: 2px;
+    border-radius: $radius-pill;
+    background: var(--color-info);
+}
+
+.evals__bar-time {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.evals__bar-facts {
+    color: var(--color-fg-muted);
+    white-space: nowrap;
+}
+
+.evals__pick {
+    display: flex;
+    flex-direction: column;
+    gap: space(3);
+}
+
+.evals__radio {
+    display: inline-flex;
+    align-items: center;
+    gap: space(1);
+}
+
+// A column's frame: one variant's chat and nothing else. The chat pane is 100vh tall, which in a frame is the frame.
+.evals-column {
+    height: 100vh;
+    overflow: hidden;
+    background: var(--color-bg);
+    color: var(--color-fg);
+}
+
+.evals-column__gone {
+    padding: space(4);
+    color: var(--color-fg-muted);
+}
+
+.evals-column__note {
+    position: fixed;
+    left: space(2);
+    right: space(2);
+    top: space(2);
+    z-index: $z-floating;
+    padding: space(2) space(3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md, 4px);
+    background: var(--color-bg-elevated);
+    color: var(--color-fg);
+    font-size: var(--font-size-sm);
+}

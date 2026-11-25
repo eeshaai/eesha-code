@@ -1,0 +1,223 @@
+@use "scale" as *;
+
+// Run map - a layered graph: stage bands, job boxes, task rows.
+//
+// Its line colours live with the rest of the contract at the top of the
+// file (--map-*), not here: one place to look, and one place a theme
+// has to override.
+
+// One scroller, not two. `.run-view__map` owns scrolling for both axes;
+// a nested one here would trap the wheel on whichever the pointer
+// happened to be over.
+.map {
+
+    width: 100%;
+
+    &--empty {
+        padding: var(--spacing-xl);
+        color: var(--color-fg-muted);
+        font-style: italic;
+    }
+
+    &__svg {
+        display: block;
+    }
+
+    // Edges: one curve per layer hop, coloured by what they lead into.
+    &__edge {
+        fill: none;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        transition: stroke 240ms ease;
+    }
+
+    // The one place sizes stay literal.
+    //
+    // Everything else in this file scales with --ui-font-size, but the map
+    // is an SVG laid out by MapMetrics in workflowMapLayout.ts - jobWidth
+    // 236, taskRow 30, and the rest are computed in TypeScript against text
+    // of a known size. Making these labels scale would grow the text inside
+    // boxes that did not grow with it, and names would spill. Scaling the
+    // map means teaching MapMetrics the type scale first; until then these
+    // numbers and that file have to agree.
+    &__stage-name {
+        fill: var(--color-fg);
+        font-family: var(--font-family-default);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+    }
+
+    &__stage-desc {
+        fill: var(--color-fg-muted);
+        font-family: var(--font-family-default);
+        font-size: 10px;
+    }
+
+    &__stage-rule {
+        stroke: var(--color-border);
+        stroke-width: 1;
+    }
+
+    &__ring-track {
+        fill: none;
+        stroke: var(--color-border);
+    }
+
+    &__ring-seg {
+        fill: none;
+        stroke-linecap: round;
+        transition: stroke 260ms ease, stroke-opacity 260ms ease;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .map__ring-seg {
+        transition: none;
+    }
+}
+
+// A job is a box; its tasks live inside it, so labels never collide.
+.map {
+
+    &__job {
+        cursor: pointer;
+    }
+
+    &__job-face {
+        fill: var(--color-bg-elevated);
+        stroke-width: 1.5;
+    }
+
+    &__job:hover .map__job-face {
+        fill: var(--color-bg-hover);
+    }
+
+    &__job--selected .map__job-face {
+        fill: var(--color-bg-active);
+        stroke-width: 2.5;
+    }
+
+    &__job-name {
+        fill: var(--color-fg);
+        font-family: var(--font-family-default);
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    &__task-dot {
+        fill: var(--color-bg-elevated);
+        stroke-width: 3;
+    }
+
+    &__task-dot--gate {
+        stroke-width: 3;
+    }
+
+    // A task in flight gets a dashed, turning edge. It has no inner parts to
+    // report progress on, so movement is the honest signal rather than a
+    // ring that could only ever read 0 or 100.
+    &__task-dot--running {
+        stroke-dasharray: 5 4;
+        animation: map-spin 3s linear infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+    }
+}
+
+@keyframes map-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .map__task-dot--running {
+        animation: none;
+    }
+}
+
+.map {
+
+    &__task-name {
+        fill: var(--color-fg);
+        font-family: var(--font-family-default);
+        font-size: 11px;
+    }
+
+    // A validation problem, marked on the step that has it.
+    //
+    // Deliberately not a status colour and not on the status dot: the step
+    // has not run, and may still run. This says "read this before you press
+    // Run", not "this failed".
+    &__warn-body {
+        fill: var(--map-problem);
+        fill-opacity: 0.22;
+        stroke: var(--map-problem);
+        stroke-width: 1.2;
+        stroke-linejoin: round;
+    }
+
+    &__warn-bang {
+        fill: var(--map-problem);
+    }
+
+    &__warn--error .map__warn-body {
+        fill: var(--map-problem-error);
+        stroke: var(--map-problem-error);
+    }
+
+    &__warn--error .map__warn-bang {
+        fill: var(--map-problem-error);
+    }
+}
+
+// The message behind the glyph, in the panel someone opens to read it.
+.log-panel {
+
+    &__problem {
+        margin: 0 var(--spacing-lg) var(--spacing-sm);
+        padding: var(--spacing-xs) var(--spacing-sm);
+        border-left: 3px solid var(--map-problem);
+        border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        background: color-mix(in srgb, var(--map-problem) 14%, transparent);
+        font-size: var(--font-size-xs);
+        line-height: 1.5;
+    }
+
+    &__problem--error {
+        border-left-color: var(--map-problem-error);
+        background: color-mix(in srgb, var(--map-problem-error) 14%, transparent);
+    }
+}
+
+.map-legend {
+
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-md);
+    font-size: var(--font-size-xs);
+    color: var(--color-fg-muted);
+
+    &__item {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+    }
+
+    &__swatch {
+        width: space(5);
+        height: var(--space-unit);
+        border-radius: var(--radius-sm);
+    }
+
+    &__gate circle {
+        stroke: var(--color-fg-muted);
+        fill: var(--color-fg-muted);
+    }
+
+    &__gate circle:first-child {
+        fill: none;
+    }
+}

@@ -1,0 +1,59 @@
+schema: 1
+id: speckit
+name: Spec Kit
+desc: GitHub Spec Kit's own commands - /speckit.specify, plan, tasks and implement - with a new chat for each phase. Set the repository up with `specify init` first.
+
+# Runs Spec Kit's own slash commands, not Eesha's prompts: no Idea phase
+# and no instruction files. Each phase sends its `command:` below and
+# nothing else. The commands come from the repository itself (`specify
+# init` installs them for your AI tool), so pick a runtime they were
+# installed for.
+#
+# Spec Kit picks the spec from the git branch it is on, so a phase
+# refuses to run unless the checked-out branch has the spec's name.
+native: speckit
+
+# Spec Kit's own folder. A folder here is a spec once it holds one of
+# the documents below.
+specsDir: specs
+
+# Spec Kit marks open points with [NEEDS CLARIFICATION], not an
+# "Open Questions" section, and /speckit.clarify answers them.
+blockOnOpenQuestions: false
+
+specTypes:
+  - id: feature
+    label: Feature
+    stages: [specify, plan, tasks, implement]
+
+stages:
+  # New spec runs /speckit.specify in a plain chat, because Spec Kit
+  # picks the folder name and the branch itself. This command only runs
+  # when a spec folder has lost its spec.md.
+  - id: specify
+    label: Specify
+    produces: spec.md
+    command: /speckit.specify
+    presets:
+      - label: Clarify
+        text: /speckit.clarify
+
+  - id: plan
+    label: Plan
+    produces: plan.md
+    command: /speckit.plan
+
+  - id: tasks
+    label: Tasks
+    produces: tasks.md
+    command: /speckit.tasks
+    presets:
+      - label: Analyze
+        text: /speckit.analyze
+
+  - id: implement
+    label: Implementation
+    command: |-
+      /speckit.implement Implement only these tasks from tasks.md, in this order:
+
+      ${{ phase.tasks }}

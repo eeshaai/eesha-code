@@ -1,0 +1,63 @@
+{
+    "id": "http",
+    "name": "HTTP request",
+    "description": "Calls one HTTP(S) endpoint - GET a JSON config, POST a webhook, poll a status URL - and stores the response as artifacts - status, body, headers, and the body parsed as json when it is JSON. In-process fetch: no curl, no shell quoting, no platform gotchas. No AI involved.",
+
+    "version": { "major": 1, "minor": 0, "patch": 0 },
+
+    "args": [
+        {
+            "name": "url",
+            "type": "string",
+            "label": "URL",
+            "description": "http:// or https://, resolved templates and all - what a gate shows is what is called.",
+            "required": true
+        },
+        {
+            "name": "method",
+            "type": "string",
+            "label": "Method",
+            "options": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
+            "default": "GET"
+        },
+        {
+            "name": "headers",
+            "type": "object",
+            "label": "Headers",
+            "description": "Request headers as a map. Do not put credentials here - point authEnv at the env var holding them instead, so the value is masked everywhere."
+        },
+        {
+            "name": "body",
+            "type": "string",
+            "label": "Body",
+            "description": "Sent as-is. Content-Type defaults to application/json when a body is given and no header names one.",
+            "multiline": true
+        },
+        {
+            "name": "authEnv",
+            "type": "string",
+            "label": "Auth env var",
+            "description": "Env var holding the full Authorization header value, e.g. 'Bearer <token>'. Read under the declaration and registered as a secret - it never lands in a log or the run record."
+        },
+        {
+            "name": "timeoutMs",
+            "type": "number",
+            "label": "Timeout (ms)",
+            "description": "Per-request ceiling, so a dead endpoint fails the task rather than hanging it.",
+            "default": 30000
+        },
+        {
+            "name": "failOnHttpError",
+            "type": "boolean",
+            "label": "Fail on 4xx/5xx",
+            "description": "true fails the task on a non-2xx status. false stores the status and carries on - for polling, or when a later if: reads run.context.NAME.status.",
+            "default": true
+        }
+    ],
+
+    "artifacts": ["status", "body", "headers", "json"],
+
+    "secretsFrom": "authEnv",
+
+    "execution": { "target": "index.js" }
+}

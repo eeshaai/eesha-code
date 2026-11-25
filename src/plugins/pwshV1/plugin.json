@@ -1,0 +1,70 @@
+{
+    "id": "pwsh",
+    "name": "PowerShell",
+    "description": "Runs an inline PowerShell script or a .ps1 file.",
+
+    "version": { "major": 1, "minor": 1, "patch": 0 },
+
+    "args": [
+        {
+            "name": "script",
+            "type": "string",
+            "label": "Script",
+            "description": "Inline PowerShell to run. Mutually exclusive with 'file'.",
+            "multiline": true
+        },
+        {
+            "name": "file",
+            "type": "string",
+            "label": "Script file",
+            "description": "Path to a .ps1 file, relative to the task's working directory."
+        },
+        {
+            "name": "additionalArgs",
+            "type": "string",
+            "label": "Additional arguments",
+            "description": "Arguments appended when running 'file', e.g. -Name \"World\"."
+        },
+        {
+            "name": "shell",
+            "type": "string",
+            "label": "Shell",
+            "description": "'pwsh' - the only value this task accepts. A task that wants cmd wants a 'run:' task.",
+            "options": ["pwsh"]
+        },
+        {
+            "name": "errorActionPreference",
+            "type": "string",
+            "label": "ErrorActionPreference",
+            "description": "Prepended as $ErrorActionPreference. 'stop' makes a failing cmdlet fail the task - without it a cmdlet error only writes to stderr and the task still passes.",
+            "options": ["default", "stop", "continue", "silentlyContinue"],
+            "default": "stop"
+        },
+        {
+            "name": "progressPreference",
+            "type": "string",
+            "label": "ProgressPreference",
+            "description": "Prepended as $ProgressPreference. Left at 'silentlyContinue' so progress bars do not spray control characters into the log.",
+            "options": ["default", "stop", "continue", "silentlyContinue"],
+            "default": "silentlyContinue"
+        },
+        {
+            "name": "failOnStderr",
+            "type": "boolean",
+            "label": "Fail on stderr",
+            "description": "Fail the task if anything is written to stderr, even when it exits zero.",
+            "default": false
+        },
+        {
+            "name": "ignoreExitCode",
+            "type": "boolean",
+            "label": "Ignore exit code",
+            "description": "Report a non-zero exit without failing the task.",
+            "default": false
+        }
+    ],
+
+    "artifacts": ["stdout", "stderr", "exitCode"],
+
+    "execution": { "target": "index.js" }
+}

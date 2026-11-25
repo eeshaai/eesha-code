@@ -1,0 +1,309 @@
+@use "scale" as *;
+
+// ===================================================================
+// Run panel: a top bar, the map, and a log panel that opens on the
+// right when a task is selected.
+// ===================================================================
+.run-view {
+
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+
+    &__bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-lg);
+        padding: var(--spacing-sm) var(--spacing-lg);
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-bg-elevated);
+        flex: 0 0 auto;
+    }
+
+    &__identity {
+        min-width: 0;
+    }
+
+    // The way back to the runs landing. A quiet link, not a button - it
+    // navigates, and the bar already has enough buttons that act.
+    // A library ghost button; only its place in the row is set here.
+    &__back {
+        margin-right: var(--spacing-xs);
+        white-space: nowrap;
+    }
+
+    &__title-row {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+    }
+
+    &__title {
+        font-size: var(--font-size-md);
+        font-weight: 700;
+    }
+
+    &__subtitle {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-xs);
+        margin-top: 2px;
+        font-size: var(--font-size-xs);
+        color: var(--color-fg-muted);
+    }
+}
+
+// The approval gate.
+//
+// Full width above the map rather than a badge on one station: nothing
+// is running, and the only thing that moves the run forward is a person
+// reading this. A prompt you have to go looking for is a prompt that
+// gets missed for a day.
+.gate {
+
+    flex: 0 0 auto;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-bottom: 1px solid var(--map-waiting);
+    background: color-mix(in srgb, var(--map-waiting) 12%, var(--color-bg-elevated));
+
+    &__head {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+    }
+
+    &__icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: space(5);
+        height: space(5);
+        flex-shrink: 0;
+        border-radius: 50%;
+        background: var(--map-waiting);
+        color: var(--color-status-ink);
+        font-size: var(--font-size-sm);
+        font-weight: 700;
+    }
+
+    // Name, plugin tag and place sit on the head's one line. The name
+    // and the tag are what the approval is addressed to, so they keep
+    // their width; the place is the part that truncates.
+    &__title {
+        font-size: var(--font-size-md);
+        font-weight: 700;
+        flex: 0 0 auto;
+    }
+
+    // The plugin id, demoted from the code box to a tag - the box
+    // holds the script, which is the thing being approved.
+    // A library Chip; only its place in the head is set here.
+    &__plugin {
+        flex: 0 0 auto;
+    }
+
+    &__where {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--font-size-xs);
+        color: var(--color-fg-muted);
+    }
+
+    &__actions {
+        display: flex;
+        gap: var(--spacing-xs);
+        flex: 0 0 auto;
+    }
+
+    // The card's evidence - resolved command, args, problem - capped and
+    // scrolled. A gate carrying a page of resolved prompt must not become
+    // the page: the question ("approve this?") stays one glance tall, and
+    // the full text stays reachable by scrolling rather than by trust.
+    &__body {
+        max-height: 30vh;
+        overflow-y: auto;
+    }
+
+    &__detail {
+        margin: var(--spacing-xs) 0 0;
+        padding: var(--spacing-sm) var(--spacing-md);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    &__inputs {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 2px var(--spacing-sm);
+        margin: var(--spacing-xs) 0 0;
+        font-size: var(--font-size-xs);
+    }
+
+    &__inputs dt {
+        color: var(--color-fg-muted);
+        font-weight: 600;
+    }
+
+    &__inputs dd {
+        margin: 0;
+        font-family: var(--font-family-mono);
+        word-break: break-word;
+    }
+
+    // The line that opens the defaults. Deliberately quiet - it is an
+    // offer to read more, not a thing to answer.
+    // A library ghost button; only its place under the args is set here.
+    &__more {
+        margin-top: var(--spacing-xs);
+    }
+
+    &__problem {
+        margin-top: var(--spacing-xs);
+        font-size: var(--font-size-xs);
+        color: var(--color-error);
+    }
+}
+
+// What the run produced - see the Outputs section in DefaultRunView.
+//
+// Sits between the gate and the map, and collapses, because it grows
+// with the run: an agent's summary is a page of prose, and a panel whose
+// map is pushed off-screen by it has traded one problem for another.
+// A tree leaf. Typography for the markdown case comes from .md-body.
+.leaf-value {
+    margin-top: 2px;
+}
+
+.leaf-json {
+    margin: 2px 0 0;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-elevated);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+// Just the row. What sits in it is a .btn, below.
+.run-actions {
+    display: flex;
+    gap: var(--spacing-xs);
+    flex: 0 0 auto;
+}
+
+// The button, everywhere.
+//
+// One shared button with two modifiers: one button, three weights. The
+// run panel's toolbar and the SDD view (Save, Edit, Revise and Start
+// phase) both use it.
+//
+// The default is quiet. `--primary` is the one action worth reaching
+// for, so it carries colour; `--danger` stays outlined until hovered,
+// because Stop only means something mid-run. A disabled control dims
+// rather than disappears, so it reads as "does not apply now" instead
+// of broken.
+.btn {
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs);
+    min-height: var(--control-height);
+    padding: 0 var(--spacing-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-family-default);
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+
+    &:hover:not(:disabled) {
+        background: var(--color-bg-hover);
+        border-color: var(--color-fg-muted);
+    }
+
+    &:active:not(:disabled) {
+        background: var(--color-bg-active);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    // The prominent action wears the theme's own button colours rather than
+    // a picked green. Themes are obliged to keep that pair legible; a green
+    // we choose is only legible in the themes we happened to look at.
+    &--primary:not(:disabled) {
+        background: var(--color-action-bg);
+        border-color: var(--color-action-bg);
+        color: var(--color-action-fg);
+    }
+
+    &--primary:hover:not(:disabled) {
+        background: var(--color-action-bg-hover);
+        border-color: var(--color-action-bg-hover);
+    }
+
+    // Mixed toward the foreground rather than dimmed with a filter: it shifts
+    // in the same direction whether the theme is light or dark.
+    &--primary:active:not(:disabled) {
+        background: color-mix(in srgb, var(--color-action-bg) 86%, var(--color-fg));
+        border-color: color-mix(in srgb, var(--color-action-bg) 86%, var(--color-fg));
+    }
+
+    &--danger:not(:disabled) {
+        border-color: var(--map-failed);
+        color: var(--map-failed);
+    }
+
+    &--danger:hover:not(:disabled) {
+        background: var(--map-failed);
+        color: var(--color-status-ink);
+    }
+}
+
+.run-view {
+
+    &__body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+    }
+
+    &__map {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+    }
+
+    &__map-bar {
+        display: flex;
+        justify-content: flex-end;
+        padding: var(--spacing-sm) var(--spacing-lg) 0;
+        flex: 0 0 auto;
+    }
+}
+
+// The log panel takes a fixed share of the width, so the map never
+// reflows to a different layout as it opens and closes.
+// The run's details are the panel's tabs (see `.phase-panel`), so the
+// rules below style only the things drawn inside those tabs.

@@ -1,0 +1,34 @@
+// ---------- the right panel: what the page draws itself ----------
+// The Files and Git panels are the UI library's FileExplorer and GitPanel,
+// and the AI changes list is the library's too, each with its own
+// styles. The page draws only the git letter on the editor's file tabs
+// (EditorArea.tsx).
+
+// The git letter on an editor tab (EditorArea.tsx): changed yellow, new
+// green, deleted red.
+.eesha-git-letter {
+    flex: 0 0 auto;
+    width: 16px;
+    text-align: center;
+    color: var(--eesha-text-muted);
+
+    &--M,
+    &--T {
+        color: var(--eesha-yellow);
+    }
+
+    &--A,
+    &--U,
+    &--C {
+        color: var(--eesha-green);
+    }
+
+    &--D,
+    &--conflict {
+        color: var(--eesha-red);
+    }
+
+    &--R {
+        color: var(--eesha-blue);
+    }
+}

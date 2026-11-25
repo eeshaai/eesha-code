@@ -1,0 +1,98 @@
+@use "scale" as *;
+
+.tree-row {
+
+    margin-top: var(--spacing-xs);
+
+    &__head {
+        display: flex;
+        align-items: baseline;
+        gap: var(--spacing-xs);
+    }
+
+    // The same box whether it opens something or not. A leaf gets an empty
+    // span so its name still lines up under its siblings' - it does not get a disabled button carrying a middot, which would draw a column of them down the edge of the panel.
+    // A library ghost button when the row opens, an empty span when it
+    // does not - the same width either way, so names line up.
+
+}
+
+// Muted, and it is the value beside it that is not. The name is the
+// expression you already know you asked for; the value is what you
+// opened the tab to read.
+.tree-row {
+
+    &__name {
+        // Never squeezed by the value beside it. Sharing the shrink would make
+        // the name wrap to three lines so the value could keep one, which
+        // is the opposite of the trade worth making - the value truncates
+        // and says so with an ellipsis, the name does not. `max-width`
+        // still lets an unusually long one wrap rather than run off the
+        // panel, which a bare `flex-shrink: 0` would do.
+        flex: 0 0 auto;
+        max-width: 100%;
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        font-weight: 600;
+        color: var(--color-fg-muted);
+
+        // `break-word`, not `break-all`: an expression chopped at an
+        // arbitrary character stops reading as one.
+        word-break: break-word;
+    }
+
+    // A short single-line value, on its name's row.
+    //
+    // One line, always. Letting it wrap would make the longest rows worse
+    // than stacking: a path beside a long name takes three lines where
+    // stacking it takes two. It truncates instead, and
+    // carries the whole value in its `title`.
+    &__value {
+        flex: 0 1 auto;
+        min-width: 0;
+        padding: 0 var(--spacing-xs);
+        border-radius: var(--radius-sm);
+        background: var(--color-bg-elevated);
+        color: var(--color-fg);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    // The way out of a value too big for the panel.
+    //
+    // Sits in the row, after the one line standing in for the document, so
+    // the row reads as "here is the start of it, here is the rest".
+    // A library ghost button; only its place in the row is set here.
+
+}
+
+// A value read at the width of the whole view: the UI library's Modal,
+// wider than its default, with the value's path in the code font.
+.value-overlay {
+
+    --ee-modal-max-width: 900px;
+
+    &__title {
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-sm);
+    }
+}
+
+.tree-row {
+
+    &__by {
+        margin-left: auto;
+        padding-left: var(--spacing-sm);
+        font-size: var(--font-size-xs);
+        color: var(--color-fg-muted);
+        white-space: nowrap;
+    }
+
+    // Indented under the twisty, so nesting reads without a guide line.
+    &__body {
+        padding-left: space(4);
+    }
+}

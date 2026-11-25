@@ -1,0 +1,223 @@
+@use "scale" as *;
+
+// ---------- LogPanel - the shared filterable log view ----------
+
+.log-view {
+
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+
+    // The whole width of the tab it sits in. Its tab body lays children
+    // out in a row, so without this it would take the width of its toolbar
+    // and an empty state inside it would sit off to the left.
+    flex: 1 1 auto;
+    min-width: 0;
+
+    // No entries yet: the toolbar has nothing to filter, so it is not
+    // shown - see LogPanel.tsx. This is that state's whole footprint.
+    &--empty {
+        padding: var(--spacing-xs) 0;
+        color: var(--color-fg-muted);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-sm);
+    }
+
+    &__toolbar {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-xs) 0 var(--spacing-sm);
+        flex-wrap: wrap;
+    }
+
+    // The level menu is the library's Select and the search box its
+    // Input; the toolbar sets only their place and the menu's width.
+    &__level {
+        flex: 0 0 auto;
+        width: 9rem;
+    }
+
+    &__search {
+        flex: 1 1 auto;
+        min-width: space(20);
+    }
+
+    // A native <details> rather than hand-rolled open/close state - it
+    // already handles click-outside, Escape and keyboard toggling, and a
+    // filter popover asks for nothing more than that.
+    &__categories {
+        position: relative;
+    }
+
+    &__categories summary {
+        box-sizing: border-box;
+        height: var(--control-height);
+        padding: 0 var(--spacing-sm);
+        border: 1px solid var(--color-border-input);
+        border-radius: var(--radius-sm);
+        background: var(--color-bg-input);
+        color: var(--color-fg-input);
+        font-size: var(--font-size-sm);
+        line-height: var(--control-height);
+        cursor: pointer;
+        list-style: none;
+        white-space: nowrap;
+    }
+
+    &__categories summary::-webkit-details-marker {
+        display: none;
+    }
+
+    &__categories-list {
+        position: absolute;
+        z-index: $z-raised;
+        top: calc(100% + var(--spacing-xs));
+        left: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        min-width: space(30);
+        max-height: space(40);
+        overflow-y: auto;
+        padding: var(--spacing-sm);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-elevated);
+        box-shadow: 0 4px 12px color-mix(in srgb, black 25%, transparent);
+    }
+
+    &__body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-sm);
+        line-height: 1.5;
+    }
+
+    // What the body says when it has no lines to draw - loading, nothing
+    // yet, or filtered to nothing. Not a log line: none of it came from
+    // anything that ran, so it takes neither the line's hanging indent nor
+    // its divider.
+    &__line {
+        white-space: pre-wrap;
+        word-break: break-word;
+        padding: 1px var(--spacing-sm) 1px calc(var(--spacing-lg) + 2px);
+        text-indent: calc(var(--spacing-lg) * -1);
+        border-left: 2px solid transparent;
+    }
+
+    &__line + .log-view__line {
+        border-top: 1px solid var(--color-log-divider);
+    }
+
+    &__line:hover {
+        background: var(--color-bg-hover);
+    }
+
+    &__line--warning {
+        color: var(--color-warning);
+    }
+
+    &__line--error {
+        color: var(--color-error);
+        border-left-color: var(--color-error);
+    }
+
+    // No separate colour of its own - critical is the top of the same
+    // scale error sits on, so it wears error's colour and a heavier
+    // weight.
+    &__line--critical {
+        color: var(--color-error);
+        border-left-color: var(--color-error);
+        font-weight: 600;
+    }
+
+    // An agent conversation's own categories, dimmed within the `info`
+    // level rather than given a level of their own: once a session reports
+    // every tool call and its own thinking, the answer it actually gave is
+    // the one line that should not read as identical to the noise around it. `message` (an
+    // agent's own prose) is left at full strength on purpose.
+    &__line--info[data-category="reasoning"],
+    &__line--info[data-category="tool.start"],
+    &__line--info[data-category="tool.end"],
+    &__line--info[data-category="notice"] {
+        opacity: 0.6;
+    }
+
+    &__meta {
+        color: var(--color-fg-muted);
+        margin-right: 0.5em;
+        user-select: none;
+    }
+
+    &__agent {
+        display: inline-block;
+        margin-right: 0.5em;
+        padding: 0 var(--spacing-xs);
+        border-radius: var(--radius-sm);
+        background: var(--color-bg-elevated);
+        color: var(--color-fg-muted);
+        font-size: var(--font-size-xs);
+    }
+
+    &__link {
+        color: var(--color-info);
+        text-decoration: underline;
+        cursor: pointer;
+    }
+
+    &__link:hover {
+        color: var(--color-primary);
+    }
+
+    &__highlight {
+        background: color-mix(in srgb, var(--color-warning) 55%, transparent);
+        color: inherit;
+        border-radius: 2px;
+    }
+
+    // From here to the JSON block, the toggles are library ghost buttons;
+    // only their place in the entry is set here.
+
+    // The fold toggle under a long message - see LogMessage. On its own
+    // line, un-indented back to where the text starts, so it reads as
+    // part of the entry and not as a fourth line of it.
+    &__fold {
+        display: flex;
+        width: fit-content;
+        margin-top: 2px;
+        text-indent: 0;
+    }
+
+    // Above the first drawn line when older lines are not drawn yet -
+    // see PAGE in LogPanel.tsx.
+    &__load-earlier {
+        width: 100%;
+        justify-content: center;
+        margin-bottom: var(--spacing-xs);
+    }
+
+    // A structured value: a button with its summary while folded, a
+    // toggle above the JSON while open. Each on its own line.
+    &__value {
+        margin-top: 2px;
+    }
+
+    &__value--collapsed,
+    &__value-toggle {
+        display: flex;
+        width: fit-content;
+    }
+
+    &__value-json {
+        margin: var(--spacing-xs) 0 0;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        border-left: 2px solid var(--color-border);
+        background: var(--color-bg-elevated);
+        white-space: pre;
+        overflow-x: auto;
+    }
+}

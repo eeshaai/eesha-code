@@ -1,0 +1,610 @@
+// The Eesha Code page.
+//
+// The chat view's own styles (src/view/theme.scss) read their colours
+// from variables such as `--eesha-text`. They are set here: the page's
+// own dark and light colours. Dark unless settings.json says
+// `"eesha": { "theme": "light" }` - the server writes the choice into
+// <html data-theme> and the body's class before anything draws.
+//
+// `--eesha-contrast-border` is left out on purpose: only high contrast
+// themes set it, and the chat styles fall back without it.
+
+// The UI library's sizes, so this page can use the very same ones.
+@use "../../SubModules/ui-lib/src/variables" as lib;
+
+:root {
+    --eesha-font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif;
+    --eesha-font-size: 13px;
+    --eesha-font-weight: normal;
+    --eesha-mono-font-family: Consolas, "Cascadia Code", "Courier New", monospace;
+}
+
+:root,
+:root[data-theme="dark"] {
+    --eesha-text:#cccccc;
+    --eesha-text-muted:#9d9d9d;
+    --eesha-text-disabled:rgba(204, 204, 204, 0.5);
+    --eesha-focus: #0078d4;
+    --eesha-link:#4daafc;
+    --eesha-border: #2b2b2b;
+    --eesha-bg:#1e1e1e;
+    --eesha-bar-bg: #181818;
+    --eesha-widget-bg:#252526;
+    --eesha-widget-border:#454545;
+    --eesha-input-bg:#252526;
+    --eesha-input-text:#cccccc;
+    --eesha-input-border: #3c3c3c;
+    --eesha-input-placeholder:#8b8b8b;
+    --eesha-button-bg:#0e639c;
+    --eesha-button-text: #ffffff;
+    --eesha-button-bg-hover:#1177bb;
+    --eesha-list-hover-bg: #2a2d2e;
+    --eesha-list-selected-bg: #04395e;
+    --eesha-list-selected-text: #ffffff;
+    --eesha-list-selected-inactive-bg: #37373d;
+    --eesha-scrollbar: rgba(121, 121, 121, 0.4);
+    --eesha-error: #f14c4c;
+    --eesha-warning: #cca700;
+    --eesha-line-number:#858585;
+    --eesha-yellow:#e2c08d;
+    --eesha-red: #f14c4c;
+    --eesha-green:#73c991;
+    --eesha-blue: #3794ff;
+    --eesha-purple: #b180d7;
+    --eesha-orange: #d18616;
+    --eesha-value-string: #ce9178;
+    --eesha-value-name: #c586c0;
+    --eesha-value-boolean: #4e94ce;
+    --eesha-value-other:rgba(204, 204, 204, 0.6);
+    --eesha-value-number: #b5cea8;
+    // The brighter text for headings, the open session and dialog titles.
+    --eesha-text-strong: #e7e7e7;
+    color-scheme: dark;
+}
+
+// Light colours: chosen by hand, or "Follow the system" on a light system.
+@mixin light-colours {
+    --eesha-text: #3b3b3b;
+    --eesha-text-muted: #717171;
+    --eesha-text-disabled: rgba(97, 97, 97, 0.5);
+    --eesha-focus: #005fb8;
+    --eesha-link: #005fb8;
+    --eesha-border: #e5e5e5;
+    --eesha-bg: #ffffff;
+    --eesha-bar-bg: #f8f8f8;
+    --eesha-widget-bg: #f8f8f8;
+    --eesha-widget-border: #e5e5e5;
+    --eesha-input-bg: #ffffff;
+    --eesha-input-text: #3b3b3b;
+    --eesha-input-border: #cecece;
+    --eesha-input-placeholder: #767676;
+    --eesha-button-bg: #005fb8;
+    --eesha-button-text: #ffffff;
+    --eesha-button-bg-hover: #0258a8;
+    --eesha-list-hover-bg: #f2f2f2;
+    --eesha-list-selected-bg: #e8e8e8;
+    --eesha-list-selected-text: #000000;
+    --eesha-list-selected-inactive-bg: #e4e6f1;
+    --eesha-scrollbar: rgba(100, 100, 100, 0.4);
+    --eesha-error: #e51400;
+    --eesha-warning: #bf8803;
+    --eesha-line-number: #6e7681;
+    --eesha-yellow: #bf8803;
+    --eesha-red: #e51400;
+    --eesha-green: #388a34;
+    --eesha-blue: #1a85ff;
+    --eesha-purple: #652d90;
+    --eesha-orange: #d18616;
+    --eesha-value-string: #a31515;
+    --eesha-value-name: #9b46b0;
+    --eesha-value-boolean: #0000ff;
+    --eesha-value-other: rgba(108, 108, 108, 0.8);
+    --eesha-value-number: #098658;
+    --eesha-text-strong: #1f1f1f;
+    color-scheme: light;
+}
+
+:root[data-theme="light"] {
+    @include light-colours;
+}
+
+// "Follow the system": the page's script sets dark or light once it
+// runs (theme.ts). This covers the first paint before that, so a light
+// system never flashes dark.
+@media (prefers-color-scheme: light) {
+    :root[data-theme="system"] {
+        @include light-colours;
+    }
+}
+
+html,
+body {
+    margin: 0;
+    height: 100%;
+}
+
+// Text and icon sizes come from the UI library (its _variables.scss), and
+// this page uses the library's own scale:
+//
+// 1. 13px - what you read: the chat's messages, what you type, lists.
+// 2. 12px - controls and their text, tool rows, dialogs, menus.
+// 3. 11px - small grey text and section headings: hints, times, counts.
+// 4. Headings 14px and up. Icons 16px.
+//
+// The first number is the page's text size. Eesha Code's default is 16px,
+// not the library's 13px: 13px looks small in a
+// browser tab. The A+ and A- buttons on the settings page
+// (eesha.fontSize) set it on <html>, and every other size grows or
+// shrinks with it.
+:root {
+    --app-font-size-base: 16px;
+}
+
+.eesha-body {
+    // The chat's own styles (src/view) read these names. They are the
+    // library's steps. Set on the body, so they win over the copies on
+    // :root (the ones in _tokens.scss and the library's own).
+    --font-size-xs: #{lib.$font-size-xs};
+    --font-size-sm: #{lib.$font-size-sm};
+    --font-size-base: #{lib.$font-size-base};
+    --font-size-md: #{lib.$font-size-md};
+    --font-size-lg: #{lib.$font-size-lg};
+    --font-size-xl: #{lib.$font-size-xl};
+    --font-size-2xl: #{lib.$font-size-2xl};
+    --font-size-3xl: #{lib.$font-size-3xl};
+
+    // Filled buttons in the button blue (#0e639c). The
+    // shared chat colours use the focus blue for them, which is brighter;
+    // focus rings keep that one (--color-focus).
+    --color-primary: var(--eesha-button-bg);
+    --color-primary-hover: var(--eesha-button-bg-hover);
+
+    background: var(--eesha-bar-bg);
+    color: var(--eesha-text);
+    font-family: var(--eesha-font-family);
+    // The chat list, the header and anything else that does not pick a size.
+    font-size: var(--font-size-base);
+    overflow: hidden;
+}
+
+// ---------- small menus ----------
+
+// The session list on the left is the library's SessionList. These
+// small menus are drawn by hand in the Git panel (GitPane.tsx).
+.eesha-menu {
+    position: absolute;
+    top: 100%;
+    right: 4px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    min-width: 150px;
+    padding: 4px;
+    border: 1px solid var(--eesha-input-border);
+    border-radius: 6px;
+    background: var(--eesha-widget-bg);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    font-size: var(--font-size-base);
+
+    // Too near the list's foot: it opens upward.
+    &--up {
+        top: auto;
+        bottom: 100%;
+    }
+}
+
+.eesha-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--eesha-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        background: var(--eesha-list-hover-bg);
+        outline: none;
+    }
+}
+
+// ---------- the chat ----------
+
+.eesha-page {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg);
+}
+
+// The chat view's own styles size it to the whole window (100vh) - here
+// it fills what the bar leaves, in one centred column.
+.eesha-main {
+    flex: 1 1 auto;
+    min-height: 0;
+
+    .chat-pane {
+        height: 100%;
+    }
+
+    // The messages: one 820px column, 16px from the sides, 14px between
+    // messages, and a little more room above the first one.
+    .chat-view__inner {
+        width: 100%;
+        max-width: 820px;
+        margin: 0 auto;
+        box-sizing: border-box;
+        gap: 14px;
+        padding-top: 28px;
+    }
+
+    // The compose box's strip at the foot: no line or shadow above it,
+    // the box simply sits under the last message.
+    .chat-view__foot {
+        padding-top: 10px;
+        border-top: 0;
+        box-shadow: none;
+    }
+
+    // The messages and tool calls look as the library's ChatTurn,
+    // ChatProse and ChatToolCall draw them.
+
+    // The permission cards and the compose box look as the library and
+    // the chat's own styles (src/view/_chat.scss) draw them.
+
+    .log-tab {
+        width: 100%;
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    // An empty chat: the question and one large compose box in the
+    // middle of the page, as on the chat sites. The foot is not stuck to
+    // the bottom then - nothing scrolls under it.
+    .chat-view__inner:has(> .ee-chat-intro) {
+        justify-content: center;
+        padding-bottom: 12vh;
+
+        .chat-view__spacer {
+            display: none;
+        }
+
+        .chat-view__foot {
+            position: static;
+            margin-top: 0;
+            border-top: 0;
+            box-shadow: none;
+            background: transparent;
+        }
+
+        .ee-prompt-input__editor {
+            min-height: 88px;
+        }
+    }
+
+    // Everything the UI library draws in a chat - the compose box, tool
+    // rows, code blocks, questions, permission asks - takes its own sizes,
+    // which are this page's sizes. Below are the chat's own parts.
+
+    // An empty session's question is the library's ChatIntro.
+}
+
+// ---------- the chat, the editor and the right panel ----------
+
+.eesha-stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+}
+
+// The chat: the library's SidePanel on the page colour. Its own width
+// on the right of the editor; the whole row without it.
+.ee-side-panel.eesha-chat {
+    background: var(--color-bg);
+}
+
+.ee-side-panel.eesha-chat--fill {
+    flex: 1 1 auto;
+    // The width the edge was dragged to is set on the element: it only counts beside the editor.
+    width: auto !important;
+    border-right: 0;
+    border-left: 0;
+
+    > .ee-side-panel__edge {
+        display: none;
+    }
+}
+
+.eesha-editor-column {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+// ---------- the editor's tabs ----------
+
+// The library draws the editor's tabs and what each shows (EditorTabs,
+// EditorView). Only the Logs tab's body and a Markdown file's Preview
+// are the page's own.
+
+// A Markdown file's Preview: the rendered document, scrolling in the tab.
+.eesha-md-preview-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 24px 32px 8px;
+}
+
+.eesha-md-preview-problem {
+    margin: 16px 24px;
+    color: var(--eesha-text-muted);
+}
+
+// The Logs view: the chat's log lines under its title, the whole page.
+.eesha-logs {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    // The find box and filters on one strip with a line under it, then the
+    // lines in 12px code font, 16px from the left, with no rule between them.
+    .log-view__toolbar {
+        padding: 4px 12px 4px 16px;
+        border-bottom: 1px solid var(--eesha-border);
+    }
+
+    .log-view__body {
+        padding: 6px 0;
+    }
+
+    .log-view__line {
+        padding: 2px 16px 2px 32px;
+    }
+
+    .log-view__line + .log-view__line {
+        border-top: 0;
+    }
+
+    .log-view__line--error,
+    .log-view__line--critical {
+        background: color-mix(in srgb, var(--eesha-red) 15%, transparent);
+    }
+}
+
+// A chat that cannot be shown here: gone, or open in another tab.
+.eesha-gone {
+    max-width: 520px;
+    margin: 12vh auto 0;
+    padding: 0 16px;
+    text-align: center;
+
+    h2 {
+        font-size: var(--font-size-lg);
+        font-weight: 600;
+        margin: 0 0 8px;
+    }
+
+    p {
+        color: var(--eesha-text-muted);
+        margin: 0 0 16px;
+    }
+}
+
+.eesha-tag {
+    font-size: var(--font-size-xs);
+    padding: 0 6px;
+    border-radius: 8px;
+    background: var(--eesha-list-selected-inactive-bg);
+    color: var(--eesha-text-muted);
+    white-space: nowrap;
+}
+
+.eesha-quiet {
+    color: var(--eesha-text-muted);
+}
+
+.eesha-problem {
+    color: var(--eesha-error);
+}
+
+.eesha-path {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--eesha-mono-font-family);
+}
+
+// The diff, a file and the folder lists need more room than a question.
+.eesha-wide-modal {
+    --ee-modal-max-width: min(1000px, 94vw);
+}
+
+// A file shown whole. A diff is drawn with the library's `code` look
+// (Dialogs.tsx).
+.eesha-file {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--eesha-mono-font-family);
+    font-size: var(--font-size-xs);
+    margin: 0;
+    max-height: 70vh;
+    overflow: auto;
+}
+
+.eesha-prompt-text {
+    margin: 0 0 8px;
+    white-space: pre-wrap;
+}
+
+// ---------- the settings page ----------
+
+// The chat stays drawn behind the settings page, hidden.
+.eesha-page[hidden] {
+    display: none;
+}
+
+// ---------- dialogs ----------
+
+// Every dialog: a grey box with a border and 10px corners, its title in
+// 15px bold on a line of its own.
+.eesha-body .ee-modal {
+    border: 1px solid var(--eesha-input-border);
+    border-radius: 10px;
+    background: var(--eesha-widget-bg);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.eesha-body .ee-modal-header {
+    padding: 14px 20px;
+    border-bottom-color: var(--eesha-input-border);
+}
+
+.eesha-body .ee-modal-title {
+    font-size: calc(var(--font-size-base) * 15 / 13);
+    font-weight: 600;
+    color: var(--eesha-text-strong);
+}
+
+.eesha-body .ee-modal-body {
+    padding: 12px 20px 16px;
+}
+
+.eesha-body .ee-modal-footer {
+    padding: 12px 20px;
+    border-top-color: var(--eesha-input-border);
+}
+
+// The version in the footer: looks like the text beside it, and opens the
+// window that checks for a newer Eesha Code.
+.eesha-footer-version {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        color: var(--eesha-text);
+        text-decoration: underline;
+    }
+}
+
+// What npm or the build said when it failed.
+.eesha-update-problem {
+    max-height: 240px;
+    overflow: auto;
+    margin: 8px 0;
+    padding: 8px;
+    border-radius: 4px;
+    background: var(--eesha-code-bg);
+    font-size: 0.9em;
+    white-space: pre-wrap;
+}
+
+// The settings page comes from the UI library (SettingsFrame, SettingsSections,
+// ConnectorsPage). These two are for the folder picker's "works here" tag
+// and the session list's dots.
+.eesha-tag {
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: var(--font-size-xs);
+    color: var(--eesha-text-muted);
+    background: var(--eesha-badge-bg, rgba(128, 128, 128, 0.2));
+}
+
+.eesha-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--eesha-text-muted);
+}
+
+// ---------- memory ----------
+
+// The Memory section of Settings and the Memory block under Connectors
+// (MemoryPage.tsx). The rest of their look is the library's settings page.
+.eesha-memory {
+
+    // A group's heading: its name, a tag, and for a folder its button.
+    &__heading {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    // One memory a row: its text takes the room, Edit and Delete stay right.
+    &__list li {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 0;
+        border-top: 1px solid var(--eesha-input-border);
+
+        &:first-child {
+            border-top: 0;
+        }
+    }
+
+    &__body {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    // The memory as it was written: its line breaks kept.
+    &__text {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    // The Add and Edit window: a name on the left, its box on the right.
+    &__form {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        align-items: center;
+        gap: 10px 12px;
+
+        > .ee-textarea {
+            align-self: stretch;
+        }
+    }
+
+    // The choices under Connectors: what it is on the left, its control on
+    // the right - under it when the page is narrow.
+    &__choices li {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        padding: 6px 0;
+        min-width: 0;
+
+        > span {
+            flex: 1 1 280px;
+            min-width: 0;
+        }
+    }
+
+    // Room under the last block, above the footer.
+    &--card {
+        padding-bottom: 20px;
+    }
+}
+

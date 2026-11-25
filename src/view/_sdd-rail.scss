@@ -1,0 +1,183 @@
+@use "scale" as *;
+
+// ---------- the rail ----------
+
+.sdd-rail {
+
+    display: flex;
+    flex-direction: column;
+    width: space(56);
+    min-width: space(40);
+    background: var(--color-bg-elevated);
+
+    // A flex item will not let its content scroll until it is allowed
+    // to be shorter than that content.
+    min-height: 0;
+
+    // A title and a close, not tabs. Outline and Notes
+    // each have their own button in the bar above, and those already light
+    // up to say which is showing.
+    // The border faces the document, whichever side the rail is on.
+    &--left {
+        border-right: 1px solid var(--color-border-subtle);
+    }
+
+    &--right {
+        border-left: 1px solid var(--color-border-subtle);
+    }
+
+    // The rail's list, and the two rules that make it scroll.
+    //
+    // Without them a forty-heading outline would not overflow - it would *squash*.
+    // Flex children shrink by default, so every row would give up height until
+    // the lot fitted, and the text would be clipped through the middle. `min-height`
+    // lets the column be shorter than its contents so the overflow has
+    // somewhere to go, and `flex-shrink: 0` stops the rows paying for it.
+    &__body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-sm);
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    &__body>* {
+        flex-shrink: 0;
+    }
+
+    // The note composer, held under the list instead of scrolling with it.
+    //
+    // Outside `__body` on purpose: that is the flex child that scrolls,
+    // and anything inside it scrolls away. This is the column's last
+    // child, so it keeps its height and the list gives up the room.
+    &__compose {
+        flex-shrink: 0;
+        padding: var(--spacing-sm);
+        border-top: 1px solid var(--color-border-subtle);
+        background: var(--color-bg-elevated);
+    }
+
+    &__send {
+        margin-top: var(--spacing-sm);
+    }
+
+    &__foot {
+        margin-top: var(--spacing-sm);
+        font-size: var(--font-size-xs);
+        color: var(--color-fg-muted);
+    }
+}
+
+// ---------- the outline ----------
+
+.sdd-outline {
+
+    // One entry: the arrow (or an empty slot of the same width, so the
+    // text lines up) and the text. The indent for the depth is on the
+    // row, so the arrow moves in with its text.
+    &__row {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+    }
+
+    &__fold {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        padding: 0;
+        border: none;
+        border-radius: var(--radius-sm);
+        background: none;
+        color: var(--color-fg-muted);
+        cursor: pointer;
+    }
+
+    &__fold:hover {
+        background: var(--color-bg-hover);
+        color: var(--color-fg);
+    }
+
+    &__fold--none {
+        cursor: default;
+    }
+
+    &__fold--none:hover {
+        background: none;
+    }
+
+    &__row--2 {
+        padding-left: var(--spacing-sm);
+    }
+
+    &__row--3 {
+        padding-left: var(--spacing-md);
+    }
+
+    &__row--4 {
+        padding-left: var(--spacing-lg);
+    }
+
+    &__row--5,
+    &__row--6 {
+        padding-left: var(--spacing-xl);
+    }
+
+    &__item {
+        flex: 1 1 auto;
+        min-width: 0;
+        border: none;
+        background: none;
+        padding: 2px var(--spacing-xs);
+        border-radius: var(--radius-sm);
+        color: var(--color-fg-muted);
+        font-size: var(--font-size-sm);
+        text-align: left;
+        cursor: pointer;
+
+        // A long heading is truncated rather than wrapped: the rail is a
+        // map, and a map whose labels take three lines each stops being
+        // glanceable.
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__item:hover {
+        background: var(--color-bg-hover);
+        color: var(--color-fg);
+    }
+
+    &__item--here {
+        color: var(--color-fg);
+        font-weight: 600;
+    }
+
+    &__item--1 {
+        font-weight: 600;
+    }
+}
+
+// ---------- notes ----------
+//
+// A note is the UI library's CommentBox - see noteContents in
+// SddRunView.tsx. The rail only lists them.
+
+// `box-sizing` where a full-width field has padding or a border.
+//
+// This stylesheet has no global reset, so `width: 100%` plus padding
+// plus a border comes to more than the box it sits in - the composer's
+// textarea would overhang its own card on the right. Stated
+// here rather than globally, because a reset applied to an existing
+// sheet this size changes more than it fixes.
+.sdd-doc__editor {
+    box-sizing: border-box;
+}
+
+
+// ---------- PhasePanel: a rail of phases, and the tabs of the selected one ----------

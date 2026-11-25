@@ -1,0 +1,62 @@
+// The task whose log is open, and the job holding it.
+.map {
+
+    &__task {
+        cursor: pointer;
+    }
+
+    &__task-hit {
+        fill: transparent;
+    }
+
+    &__task:hover .map__task-hit {
+        fill: var(--color-bg-hover);
+    }
+
+    &__task--selected .map__task-hit {
+        fill: var(--color-bg-active);
+        stroke: var(--map-running);
+        stroke-width: 1.5;
+    }
+
+    &__task--selected .map__task-name {
+        font-weight: 700;
+    }
+
+    // The rerun control on an ai station. Quiet until the row is hovered -
+    // the map is a picture first, and a control on every finished ai task
+    // would read as part of the drawing - but always focusable, so keyboard
+    // users are not gated on a hover they cannot make.
+    &__rerun {
+        cursor: pointer;
+    }
+
+    &__rerun-hit {
+        fill: transparent;
+    }
+
+    &__rerun-arc {
+        stroke: var(--color-fg-muted);
+    }
+
+    &__rerun-head {
+        fill: var(--color-fg-muted);
+    }
+
+    &__task:hover .map__rerun-arc,
+    &__rerun:hover .map__rerun-arc,
+    &__rerun:focus-visible .map__rerun-arc {
+        stroke: var(--color-fg);
+    }
+
+    &__task:hover .map__rerun-head,
+    &__rerun:hover .map__rerun-head,
+    &__rerun:focus-visible .map__rerun-head {
+        fill: var(--color-fg);
+    }
+
+    &__rerun:hover .map__rerun-hit,
+    &__rerun:focus-visible .map__rerun-hit {
+        fill: var(--color-bg-active);
+    }
+}

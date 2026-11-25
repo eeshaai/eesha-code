@@ -1,0 +1,65 @@
+{
+    "id": "ado-comment",
+    "name": "ADO work item comment",
+    "description": "Adds or updates one comment on an Azure DevOps work item, keyed by a marker. The same key always lands on the same comment; a new key adds a new one. No AI involved.",
+
+    "version": { "major": 1, "minor": 0, "patch": 0 },
+
+    "args": [
+        {
+            "name": "orgUrl",
+            "type": "string",
+            "label": "Organization URL",
+            "description": "https://dev.azure.com/{org}",
+            "required": true
+        },
+        {
+            "name": "project",
+            "type": "string",
+            "label": "Project",
+            "required": true
+        },
+        {
+            "name": "workItem",
+            "type": "number",
+            "label": "Work item id",
+            "required": true
+        },
+        {
+            "name": "key",
+            "type": "string",
+            "label": "Comment key",
+            "description": "Marker deciding add vs update. The same key updates its own comment on every run; a new key adds one.",
+            "required": true
+        },
+        {
+            "name": "body",
+            "type": "string",
+            "label": "Comment",
+            "description": "The comment text. The key rides along as a short [eesha:...] line at the end.",
+            "required": true,
+            "multiline": true
+        },
+        {
+            "name": "auth",
+            "type": "string",
+            "label": "Auth",
+            "description": "az uses a short-lived token from the CLI's own login - no PAT anywhere. pat is for a machine that cannot have az.",
+            "options": ["az", "pat"],
+            "default": "az"
+        },
+        {
+            "name": "patEnv",
+            "type": "string",
+            "label": "PAT env var",
+            "description": "Env var holding the personal access token. Read only when auth is pat.",
+            "default": "AZURE_DEVOPS_EXT_PAT"
+        }
+    ],
+
+    "artifacts": ["commentId", "action"],
+
+    "secretsFrom": "patEnv",
+
+    "execution": { "target": "index.js" }
+}

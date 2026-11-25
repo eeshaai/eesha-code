@@ -1,0 +1,411 @@
+@use "scale" as *;
+
+// The implement phase's Wave graph tab - see `WaveGraph.tsx`.
+//
+// Boxes are laid out by flex rows; the arrows are one SVG over them,
+// drawn from where the boxes ended up. Orange is the one colour of its
+// own: a file two branches both edit. It is a warning, not a failure,
+// so it is not the error red.
+
+// Fills the pane like every other tab. Only the graph scrolls: the bar
+// stays at the top and the legend stays at the bottom.
+.sdd-waves {
+    --waves-clash: var(--eesha-orange, #f0a050);
+
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.sdd-waves__bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: space(3);
+    padding: space(3) space(4);
+}
+
+.sdd-waves__summary {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+}
+
+// The one part that scrolls. The lines are drawn inside it, so they
+// scroll with the boxes.
+.sdd-waves__canvas {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: space(2) space(4);
+}
+
+.sdd-waves__row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    gap: space(6);
+}
+
+.sdd-waves__wave {
+    display: flex;
+    flex-direction: column;
+    gap: space(2);
+    padding: space(3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-elevated);
+    min-width: 260px;
+    max-width: 560px;
+}
+
+.sdd-waves__wave--running {
+    border-color: var(--color-info);
+}
+
+.sdd-waves__wave--alone {
+    border-style: dashed;
+    background: transparent;
+}
+
+.sdd-waves__head {
+    display: flex;
+    align-items: center;
+    gap: space(2);
+    font-size: var(--font-size-sm);
+}
+
+.sdd-waves__name {
+    flex: 1;
+}
+
+.sdd-waves__entry {
+    color: var(--color-info);
+}
+
+.sdd-waves__count {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-xs);
+}
+
+.sdd-waves__tasks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: space(2);
+}
+
+// A box with one button laid over the whole of it. Its words take no
+// pointer, so a click anywhere lands on that button - except the wave
+// numbers, which sit above it and open their own card.
+.sdd-waves__task {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: space(2);
+    width: 220px;
+    min-height: 56px;
+    padding: space(2) space(3);
+    box-sizing: border-box;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-size: var(--font-size-sm);
+
+    > :not(.sdd-waves__task-hit) {
+        pointer-events: none;
+    }
+
+    &:has(> .sdd-waves__task-hit:hover:not([aria-disabled="true"])) {
+        background: var(--color-bg-hover);
+    }
+}
+
+.sdd-waves__task-hit {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+
+    &:focus-visible {
+        outline: 1px solid var(--color-focus);
+        outline-offset: 1px;
+    }
+
+    &[aria-disabled="true"] {
+        cursor: default;
+    }
+}
+
+// A wave number: the citation look, small enough to sit in a line of
+// text, and above the card's own button.
+.sdd-waves__ref {
+    position: relative;
+    z-index: 1;
+    pointer-events: auto;
+    padding: 0 0.3em;
+    font-style: normal;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+// The landing, after a wave number was followed - one flash, then gone.
+@keyframes sdd-waves-flash {
+    from { box-shadow: 0 0 0 2px var(--color-link); }
+    to { box-shadow: 0 0 0 2px transparent; }
+}
+
+.sdd-waves__wave--flash {
+    animation: sdd-waves-flash 1.1s ease-out;
+}
+
+.sdd-waves__task-icon {
+    flex: none;
+    color: var(--color-fg-muted);
+}
+
+.sdd-waves__task-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+
+    // The body takes no pointer, but the wave numbers in it must.
+    .sdd-waves__ref {
+        pointer-events: auto;
+    }
+}
+
+.sdd-waves__task-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.sdd-waves__task-line {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-xs);
+}
+
+// "Run till this task" on a waiting card: its own small button, above
+// the card's, so pressing it never presses the card.
+.sdd-waves__till {
+    position: relative;
+    z-index: 1;
+    pointer-events: auto;
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: space(1);
+    margin-top: space(1);
+    padding: 0 space(2);
+    border: 1px solid var(--color-link);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-link);
+    font: inherit;
+    font-size: var(--font-size-xs);
+    line-height: 1.6;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+        background: var(--color-bg-hover);
+    }
+
+    &:disabled {
+        border-color: var(--color-border);
+        color: var(--color-fg-muted);
+        cursor: default;
+    }
+}
+
+.sdd-waves__task--done {
+    border-color: var(--color-border);
+    background: var(--color-bg-elevated);
+    color: var(--color-fg-muted);
+
+    .sdd-waves__task-icon {
+        color: var(--color-success);
+    }
+}
+
+.sdd-waves__task--running,
+.sdd-waves__task--queued {
+    border-color: var(--color-info);
+
+    .sdd-waves__task-icon,
+    .sdd-waves__task-line {
+        color: var(--color-info);
+    }
+}
+
+.sdd-waves__task--waiting {
+    border-color: var(--color-border);
+    color: var(--color-fg-muted);
+}
+
+.sdd-waves__task--optional {
+    border-style: dashed;
+}
+
+.sdd-waves__task--clash {
+    border-color: var(--waves-clash);
+
+    .sdd-waves__task-icon,
+    .sdd-waves__task-line {
+        color: var(--waves-clash);
+    }
+}
+
+// Over the boxes, never in the way of a click.
+.sdd-waves__lines {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    overflow: visible;
+}
+
+.sdd-waves__head-mark {
+    fill: var(--color-fg-muted);
+}
+
+.sdd-waves__line {
+    path {
+        fill: none;
+        stroke: var(--color-fg-muted);
+        stroke-width: 1.5;
+    }
+
+    text {
+        fill: var(--color-fg-muted);
+        font-family: var(--eesha-mono-font-family, monospace);
+        font-size: 11px;
+    }
+}
+
+.sdd-waves__line--clash {
+    path {
+        stroke: var(--waves-clash);
+        stroke-dasharray: 6 5;
+    }
+
+    text {
+        fill: var(--waves-clash);
+        text-anchor: middle;
+    }
+}
+
+// A card's popup sits inside the card, whose words take no pointer - it
+// must, so it can be read, scrolled and clicked.
+.sdd-waves__task > .sdd-peek {
+    pointer-events: auto;
+}
+
+.sdd-waves__peek-heading {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+
+    &--warn {
+        color: var(--waves-clash);
+    }
+}
+
+.sdd-waves__peek-path {
+    color: var(--color-fg-muted);
+    font-family: var(--eesha-mono-font-family, monospace);
+    font-size: var(--font-size-xs);
+
+    &--warn {
+        color: var(--waves-clash);
+    }
+}
+
+.sdd-waves__ref--warn {
+    color: var(--waves-clash);
+    background: color-mix(in srgb, var(--waves-clash) 12%, transparent);
+}
+
+// The landing, after a task id in a popup was followed.
+.sdd-waves__task--flash {
+    animation: sdd-waves-flash 1.1s ease-out;
+}
+
+.sdd-waves__legend {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: space(4);
+    padding: space(2) space(4);
+    border-top: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-elevated);
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-xs);
+
+    span {
+        display: inline-flex;
+        align-items: center;
+        gap: space(1);
+    }
+}
+
+// The question "Run till here" asks: one box per chat, in the order they
+// run, the last one outlined - it is what was pressed.
+.sdd-ask.sdd-till {
+    --ee-modal-max-width: 32rem;
+}
+
+.sdd-till__lead {
+    margin: 0 0 space(3);
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-sm);
+}
+
+.sdd-till__step,
+.sdd-till__optional {
+    display: flex;
+    flex-direction: column;
+    gap: space(1);
+    margin-bottom: space(2);
+    padding: space(2) space(3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+}
+
+.sdd-till__step--target {
+    border-color: var(--color-link);
+}
+
+.sdd-till__optional {
+    border-style: dashed;
+}
+
+.sdd-till__head {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-xs);
+
+    b {
+        color: var(--color-fg);
+    }
+}
+
+.sdd-till__left,
+.sdd-till__why {
+    color: var(--color-fg-muted);
+    font-size: var(--font-size-xs);
+}
+
+.sdd-till__why {
+    margin: 0;
+}

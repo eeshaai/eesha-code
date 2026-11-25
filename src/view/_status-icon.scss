@@ -1,0 +1,50 @@
+// A run's or step's status: a filled icon, coloured by state.
+//
+// Drawn by `StatusIcon` in ui.tsx - in the rail, the runs list and the
+// spec phase steps. The glyph says the state by shape (tick, cross,
+// pause), and the colour says it again, so neither alone carries it.
+
+.status-icon {
+
+    &--pending {
+        color: var(--map-pending);
+    }
+
+    &--running {
+        color: var(--map-running);
+
+        // The running icon is an open arc, so it turns rather than pulses.
+        .icon {
+            animation: status-icon-spin 1s linear infinite;
+        }
+    }
+
+    &--success {
+        color: var(--map-success);
+    }
+
+    &--failed {
+        color: var(--map-failed);
+    }
+
+    &--skipped,
+    &--cancelled {
+        color: var(--map-skipped);
+    }
+
+    &--waiting {
+        color: var(--map-waiting);
+    }
+}
+
+@keyframes status-icon-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .status-icon--running .icon {
+        animation: none;
+    }
+}

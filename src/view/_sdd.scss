@@ -1,0 +1,686 @@
+@use "scale" as *;
+
+// ============ SDD view ============
+
+// The spec panel is a `PhasePanel` - the rail, the tabs and the
+// viewport are its (see the PhasePanel section below). What is left
+// here is the header's contents and each tab's own surface.
+
+// One row: title, the phase steps, and the review's own state.
+//
+// The spec folder's path is the title's tooltip. On a narrow panel the row wraps rather than hiding a step.
+.sdd-view {
+
+    &__header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        column-gap: var(--spacing-lg);
+        row-gap: var(--spacing-xs);
+        flex: 0 0 auto;
+        min-width: 0;
+    }
+
+    // Capped, so a long spec name cannot push the steps off the row. The
+    // tooltip has the whole name and the folder.
+    &__title {
+        max-width: 20rem;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--font-size-lg);
+        font-weight: 600;
+        line-height: 1.3;
+    }
+
+    // The spec's AI picker: at the right end of the header row, as small
+    // as the compose box's own.
+    &__ai {
+        margin-left: auto;
+        min-width: 0;
+        font-size: var(--font-size-sm);
+    }
+
+    // What the reader wants before they start reading: how much has been
+    // said about this document, and how much of it has moved. Lives in the
+    // space folding the path up the line freed.
+    &__status {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        flex: 0 0 auto;
+        font-size: var(--font-size-sm);
+        color: var(--color-fg-muted);
+    }
+
+    &__stat {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        white-space: nowrap;
+    }
+
+    &__stat-sep {
+        opacity: 0.5;
+    }
+
+    // The same mark the margin draws, so the count and the mark beside
+    // the block read as one thing.
+    &__stat-mark--note {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--color-warning);
+    }
+}
+
+// EARS keywords - the grammar of an acceptance criterion, picked out for the eye.
+// EARS keywords, coloured by the half of the sentence they open.
+//
+// "WHEN x THEN the system SHALL y" is two clauses - a trigger and an
+// obligation - and colouring them differently lets a reader scan a
+// criterion's shape without reading it. A tinted pill rather than
+// coloured text alone: at 0.9em inside a paragraph, colour by itself is
+// easy to miss, which is what makes them read as merely capitalised.
+.sdd-ears {
+
+    font-family: var(--font-family-mono);
+    font-size: 0.9em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 0.05em 0.3em;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+
+    // The trigger: WHEN, WHILE, WHERE, IF.
+    &--condition {
+        color: var(--color-info);
+        background: color-mix(in srgb, var(--color-info) 15%, transparent);
+    }
+
+    // The obligation: THEN, SHALL, SHALL NOT.
+    &--outcome {
+        color: var(--color-keyword);
+        background: color-mix(in srgb, var(--color-keyword) 18%, transparent);
+    }
+}
+
+// A cross-phase reference, and the place it lands.
+//
+// Styled as the emphasis it replaces - italic, at the surrounding size -
+// with a tint and a pointer to say it is followable. A reference sits at
+// the tail of a task or a correctness property, read after the sentence
+// it belongs to, so it must not compete with that sentence for the eye.
+.sdd-ref {
+
+    font: inherit;
+    font-style: italic;
+    border: none;
+    padding: 0.05em 0.4em;
+    border-radius: var(--radius-sm);
+    color: var(--color-link);
+    background: color-mix(in srgb, var(--color-link) 10%, transparent);
+    cursor: pointer;
+    text-align: left;
+
+    &:hover {
+        background: color-mix(in srgb, var(--color-link) 22%, transparent);
+    }
+
+    // Nothing left to follow - reads as plain emphasis, so a dead
+    // reference never looks like a control that simply failed to respond.
+    &--dead {
+        background: none;
+        color: var(--color-fg-muted);
+        cursor: default;
+    }
+
+    &__id {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+
+    // A number the target document does not contain. Struck rather than
+    // dropped: a revise that renumbers the requirements leaves the plan
+    // citing criteria that do not exist, and that is precisely the drift
+    // worth seeing.
+    &__id--broken {
+        color: var(--color-warning);
+        text-decoration: line-through;
+        text-decoration-thickness: 1px;
+    }
+}
+
+// The card a rested pointer opens on a reference.
+//
+// A citation is read in the middle of a sentence about something else -
+// "implement the retry, _Requirements: 1.2_" - and following it costs
+// the reader their place in the plan and a scroll back. The card answers
+// the small question ("what is 1.2 again?") without moving them, and
+// leaves following for the larger one.
+//
+// `fixed`, and positioned from the reference's own box in JS rather than
+// by `position: relative` on an ancestor: this renders inside the
+// markdown flow, where every ancestor up to the reading pane is
+// somebody else's element and one of them clips.
+//
+// Spans throughout, for the same reason - a `<div>` inside the `<p>`
+// react-markdown builds is invalid, and the browser closes the
+// paragraph around it.
+.sdd-peek {
+
+    position: fixed;
+    z-index: $z-overlay;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    width: 380px;
+    max-width: calc(100vw - var(--spacing-lg) * 2);
+    max-height: 45vh;
+    overflow-y: auto;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    // The reference is italic; what it is showing is not.
+    font-style: normal;
+    font-size: var(--font-size-sm);
+    line-height: 1.45;
+
+    // The card takes the pointer, so it can be read and scrolled: it opens
+    // beside the reference, never under it, and the JS holds it open while
+    // the pointer is on it.
+    pointer-events: auto;
+
+    &__item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    &__head {
+        display: flex;
+        gap: var(--spacing-sm);
+        align-items: baseline;
+        color: var(--color-fg-muted);
+        font-size: var(--font-size-xs);
+    }
+
+    &__id {
+        color: var(--color-link);
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+
+    &__text {
+        color: var(--color-fg);
+    }
+
+    // Said once at the foot, not per criterion: the click does the same
+    // thing however many the phrase names.
+    &__hint {
+        color: var(--color-fg-muted);
+        font-size: var(--font-size-xs);
+        border-top: 1px solid var(--color-border-subtle);
+        padding-top: var(--spacing-xs);
+    }
+}
+
+.sdd-ref-target {
+
+    scroll-margin: var(--spacing-lg);
+    border-radius: var(--radius-sm);
+
+    // The landing. One flash, then gone - a persistent highlight would still
+    // be lit the next time the document is opened, and the mark means "this
+    // is the line you asked for", not "this line is special".
+    //
+    // The tint is on the rule and the animation only fades it, so with
+    // reduced motion the highlight is simply static for the same span
+    // instead of vanishing entirely - the class is removed on a timer either
+    // way.
+    &--flash {
+        background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+        animation: sdd-ref-flash 1.1s ease-out;
+    }
+}
+
+@keyframes sdd-ref-flash {
+    0% {
+        background: color-mix(in srgb, var(--color-primary) 55%, transparent);
+    }
+
+    60% {
+        background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    }
+
+    100% {
+        background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    }
+}
+
+.sdd-plugin__why--blocked {
+    color: var(--map-problem);
+    opacity: 1;
+}
+
+// ---------- The implement lens: tasks.md as an execution dashboard ----------
+
+.sdd-tasks {
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+
+    &__count {
+        font-size: var(--font-size-sm);
+        color: var(--color-fg-muted);
+        align-self: center;
+    }
+
+    // One line above the rows: which wave the agent is in. A link, not
+    // a button - pressing it only scrolls to that wave's first row.
+    &__running {
+        align-self: flex-start;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--color-primary);
+        font-size: var(--font-size-sm);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+    }
+}
+
+// A task and its subtasks as one block, so the gap between tasks reads
+// larger than the gap within one.
+.sdd-task {
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+
+    &__row {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+    }
+
+    // A sub-task's row sits under its group's heading - indented by one
+    // button width, derived from it, so the two stay aligned when the
+    // control height changes.
+    &__row--sub {
+        padding-left: calc(var(--control-height) + var(--spacing-sm));
+    }
+
+    &__group {
+        font-weight: 600;
+    }
+
+    // Takes what the row has left and wraps inside it, so the wave chip
+    // and the session link stay on the title's line. A basis of `auto`
+    // would let a long title take the whole row and push them under it.
+    &__text {
+        flex: 1 1 0;
+        min-width: 0;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+    }
+
+    &__text--done {
+        opacity: 0.6;
+        text-decoration: line-through;
+    }
+
+    &__pending {
+        font-size: var(--font-size-xs);
+        color: var(--color-primary);
+        animation: sdd-pulse 1.4s ease-in-out infinite;
+    }
+
+    // The row's way back to its own chat. A link, not a button: the row's
+    // one button is ▶, which starts work, and a second thing shaped like it
+    // would read as a second way to do that.
+    &__session {
+        flex-shrink: 0;
+        align-self: center;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--color-fg-muted);
+        font-size: var(--font-size-xs);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    &__session:hover {
+        color: var(--color-primary);
+    }
+
+    // Wave and optional markers - quiet by design. They annotate a task row
+    // without competing with its text: the row is the thing you read, these
+    // are the things you notice when you go looking for them.
+    &__wave,
+    &__optional {
+        flex-shrink: 0;
+        align-self: center;
+        padding: 0 var(--spacing-xs);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        font-size: var(--font-size-xs);
+        line-height: 1.6;
+        color: var(--color-fg-muted);
+        white-space: nowrap;
+    }
+
+    &__optional {
+        font-style: italic;
+    }
+
+    // The wave badge also says where its wave stands: ticked, being
+    // worked, or waiting. Same colours the rows use for those states.
+    &__wave--done {
+        border-color: transparent;
+        color: var(--color-success);
+    }
+
+    &__wave--running {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+    }
+
+    // "Run till here", beside the wave badge, on a row that waits. Small
+    // and outlined so it does not read as the row's ▶.
+    &__till {
+        flex-shrink: 0;
+        align-self: center;
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        padding: 0 var(--spacing-xs);
+        border: 1px solid var(--color-link);
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--color-link);
+        font: inherit;
+        font-size: var(--font-size-xs);
+        line-height: 1.6;
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+            background: var(--color-bg-hover);
+        }
+
+        &:disabled {
+            border-color: var(--color-border);
+            color: var(--color-fg-muted);
+            cursor: default;
+        }
+    }
+
+}
+
+// A tab's surface: fills the pane, and scrolls inside it. No border of
+// its own - the tab strip above it is the edge.
+.sdd-doc {
+
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+
+    &__bar {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-xs) var(--spacing-md);
+        border-bottom: 1px solid var(--color-border-subtle);
+        background: var(--color-bg-elevated);
+    }
+
+    &__name {
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-base);
+    }
+
+    // The file name as a link to the file - typographically a plain name, so the bar reads
+    // the same whether the document exists yet.
+    &__open {
+        border: none;
+        background: none;
+        padding: 0;
+        color: var(--color-link);
+        font-family: inherit;
+        font-size: inherit;
+        cursor: pointer;
+        text-decoration: none;
+    }
+
+    &__open:hover {
+        text-decoration: underline;
+    }
+
+    &__tools {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+    }
+
+    &__body {
+        padding: var(--spacing-md) var(--spacing-lg);
+        overflow-y: auto;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    &__empty {
+        opacity: 0.6;
+        font-size: var(--font-size-base);
+    }
+
+    &__editor {
+        width: 100%;
+        flex: 1;
+        min-height: space(80);
+        resize: none;
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-base);
+        line-height: 1.6;
+        color: inherit;
+        background: transparent;
+        border: none;
+        outline: none;
+    }
+
+    // The UI library's Textarea, drawn as the page itself: no box, no
+    // fill and no glow of its own on focus - the ring below says where
+    // the focus is. Its own padding and 120px floor give way to ours.
+    &__editor.ee-textarea {
+        padding: 2px;
+
+        &:focus,
+        &:hover {
+            background: transparent;
+            box-shadow: none;
+        }
+    }
+
+    // Inset, so the ring sits inside the document's rounded border rather
+    // than being clipped by its overflow:hidden.
+    &__editor:focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: -2px;
+    }
+
+    // What the frontmatter says, beside the file name.
+    //
+    // One quiet word in the bar, not a row of chips inside the scrolling
+    // document, which would push the text down and scroll away with it.
+    // The rest is in its tooltip.
+    &__meta {
+        font-size: var(--font-size-sm);
+        color: var(--color-fg-muted);
+        white-space: nowrap;
+    }
+}
+
+// Opening a row: the chevron in front of it, and the task's detail
+// lines under the title - the row wraps, and the details take the
+// whole next line.
+.sdd-task__row {
+    flex-wrap: wrap;
+}
+
+.sdd-task__open--none {
+    cursor: default;
+}
+
+.sdd-task__details {
+    flex-basis: 100%;
+    margin-left: calc(2 * var(--control-height) + 2 * var(--spacing-sm));
+    padding: var(--spacing-xs) 0 var(--spacing-sm);
+    font-size: var(--font-size-sm);
+    color: var(--color-fg-muted);
+
+    p, ul, ol {
+        margin: 0.2em 0;
+    }
+}
+
+// The row's live box - the same tick the Doc tab writes.
+.sdd-task__box {
+    margin: 0;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+// The sessions pane - every run of every phase and chat of the spec,
+// listed on top, the picked one's conversation under it. See `aside` in
+// SddRunView.tsx.
+.sdd-sessions {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+
+    // The pane's name, a label at the head of the one row rather
+    // than a heading with a line of its own.
+    &__head {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        font-weight: 600;
+    }
+
+    &__count {
+        font-weight: normal;
+        color: var(--color-fg-muted);
+    }
+
+    // Which session is on screen, and the way to any other.
+    //
+    // A dropdown rather than a list of rows: a spec runs to dozens of
+    // sessions, and a list of them would take a third of the pane off the
+    // conversation to show six of twenty-two. This is one line however
+    // many there are, and the conversation keeps the rest.
+    // The library's Select, in a box that carries its tooltip and takes
+    // the room the row has left.
+    &__pick {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    // A new conversation for this phase. Square and the width of its
+    // own height, so the `+` sits in the middle of it rather than in a
+    // button shaped for a word.
+    &__new {
+        flex: 0 0 auto;
+    }
+
+    // The UI library's status dot, or an empty slot of the same width
+    // when there is no mark, so the dropdown does not move.
+    &__dot {
+        flex: 0 0 auto;
+        width: 0.5rem;
+    }
+
+    // What is on screen, and what can be done to it.
+    &__bar {
+        flex: 0 0 auto;
+        display: flex;
+        background: var(--color-bg-elevated);
+
+        // One line, whatever the pane's width. Wrapping would put the `+` on
+        // a row of its own, which reads as a button that lost its
+        // label; the dropdown gives up the room instead, and it is the
+        // one thing here that can.
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: var(--spacing-sm);
+
+        // The tab row's height beside it - 32px and the same one-pixel
+        // line under it - so the two rows read as one. No padding top
+        // or bottom: the 28px dropdown and + sit in the middle.
+        // Content-box so the line is added under the 32px, as it is on
+        // the tab row, and not taken out of it.
+        box-sizing: content-box;
+        min-height: space(8);
+        padding: 0 var(--spacing-lg);
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    &__chat {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+}
+
+// The open questions of the document on screen, each with a box to
+// answer it in. Above the document, so the block on the
+// next phase is explained where it can be lifted.
+.sdd-questions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    margin: var(--spacing-sm) 0 var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 55%, transparent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+
+    &__head {
+        font-weight: 600;
+    }
+
+    &__item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+    }
+
+    &__answer {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+
+        textarea {
+            flex: 1 1 auto;
+            min-height: 0;
+            resize: vertical;
+        }
+    }
+}

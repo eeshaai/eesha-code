@@ -1,0 +1,29 @@
+{
+    "id": "shell",
+    "name": "Shell",
+    "description": "Runs a command line through the OS shell - what a task's run: desugars to.",
+
+    "version": { "major": 1, "minor": 0, "patch": 0 },
+
+    "args": [
+        {
+            "name": "script",
+            "type": "string",
+            "label": "Script",
+            "description": "The command line to run.",
+            "multiline": true,
+            "required": true
+        },
+        {
+            "name": "shell",
+            "type": "string",
+            "label": "Shell",
+            "description": "Which shell runs it. Absent means whatever this OS provides by default - cmd on Windows, bash elsewhere. pwsh must be named explicitly.",
+            "options": ["pwsh", "cmd", "bash"]
+        }
+    ],
+
+    "artifacts": ["stdout", "stderr", "exitCode"],
+
+    "execution": { "target": "index.js" }
+}
