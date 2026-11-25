@@ -19,6 +19,7 @@ import { packageVersion } from "./version";
  *
  *   eesha start [--no-open]  starts the server in the background and opens the page
  *   eesha stop               stops it - every turn in flight is stopped too
+ *   eesha restart [--open] [--force]  stops it and starts it again; refuses while a turn runs, unless --force
  *   eesha status             says whether it runs, and prints the link again
  *   eesha open               opens the page in the browser
  *   eesha run                runs the server in this terminal; Ctrl+C stops it
@@ -32,6 +33,9 @@ const USAGE = `Eesha Code - a session with AI coding agents in a browser tab.
 
   eesha start [--no-open]  Start the server in the background and open the page.
   eesha stop               Stop the server. A turn still running is stopped.
+  eesha restart [--open] [--force]
+                           Stop the server and start it again. Open tabs reconnect.
+                           Refuses while a session works, unless --force.
   eesha status             Say whether the server runs, and print its link.
   eesha open               Open the page in the browser.
   eesha run                Run the server in this terminal. Ctrl+C stops it.
@@ -55,6 +59,9 @@ interface Status {
     chats: number;
 
     working: number;
+
+    /** Spec runs in flight. Missing from a server older than `eesha restart`. */
+    specsWorking?: number;
 }
 
 /** The terminal output of a server started in the background - where a crash before logging starts lands. */
@@ -309,6 +316,46 @@ async function stop(): Promise<number> {
     return 0;
 }
 
+/**
+ * Stops the server and starts it again - after a settings.json change, say.
+ * Open tabs reconnect by themselves, so no new tab unless `open`. A turn in
+ * flight would be stopped, so it refuses then unless `force`. A server that
+ * does not answer is ended by `stop` the same way.
+ */
+async function restart(open: boolean, force: boolean): Promise<number> {
+
+    const key = ensureKey();
+
+    const found = await running(key);
+
+    const working = found ? found.working + (found.specsWorking ?? 0) : 0;
+
+    if (working > 0) {
+
+        if (!force) {
+
+            console.error(`${working} session(s) are working. A restart stops their turns.`);
+            console.error("Wait for them to finish, or restart anyway with: eesha restart --force");
+
+            return 1;
+        }
+
+        console.log(`--force: stopping the turns of ${working} working session(s).`);
+    }
+
+    if (!readServerFile())
+        console.log("Not running - starting it.");
+    else {
+
+        const stopped = await stop();
+
+        if (stopped !== 0)
+            return stopped;
+    }
+
+    return start(open);
+}
+
 async function status(): Promise<number> {
 
     const key = ensureKey();
@@ -451,6 +498,9 @@ async function main(): Promise<number> {
 
         case "stop":
             return stop();
+
+        case "restart":
+            return restart(rest.includes("--open"), rest.includes("--force"));
 
         case "status":
             return status();

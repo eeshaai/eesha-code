@@ -687,7 +687,10 @@ export class EeshaServer implements HostServer, SddServer {
                 port: this.port,
                 tabs: this.tabs.size,
                 chats: this.chats.size,
-                working: [...this.chats].filter(entry => entry.controller.working).length
+                working: [...this.chats].filter(entry => entry.controller.working).length,
+
+                // Spec runs in flight - `eesha restart` refuses on these too, as the upgrade does.
+                specsWorking: this.sdd.working
             });
 
         if (request.method === "POST" && url.pathname === "/control/stop") {

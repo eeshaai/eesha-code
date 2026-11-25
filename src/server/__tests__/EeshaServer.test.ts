@@ -329,7 +329,8 @@ describe("who may talk to the server", () => {
         const status = await call("GET", "/control/status", { "x-eesha-key": KEY });
 
         expect(status.status).toBe(200);
-        expect(JSON.parse(status.text)).toMatchObject({ pid: process.pid, port, chats: 0 });
+        // working and specsWorking: what `eesha restart` refuses on.
+        expect(JSON.parse(status.text)).toMatchObject({ pid: process.pid, port, chats: 0, working: 0, specsWorking: 0 });
 
         expect((await call("POST", "/control/stop", { "x-eesha-key": KEY })).status).toBe(200);
         expect(onStop).toHaveBeenCalledTimes(1);
