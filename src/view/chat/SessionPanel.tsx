@@ -284,6 +284,9 @@ export interface SessionPanelProps {
     onCompact?(): void;
     running: boolean;
 
+    /** Sign in, on an MCP server whose runtime says it needs a sign-in. Absent, no button. */
+    onSignInMcp?(server: string): void;
+
     /** Opens a Steering row's file. Absent, the rows are plain text. */
     onOpenFile?(path: string): void;
 
@@ -329,7 +332,7 @@ function mcpWord(server: McpServerState): string {
 
 export default function SessionPanel(props: SessionPanelProps) {
 
-    const { entries, runtime, model, level, context, session, sessionModels, accounts, showCost, onCompact, running, onOpenFile, onOpenContextFile, extras } = props;
+    const { entries, runtime, model, level, context, session, sessionModels, accounts, showCost, onCompact, running, onSignInMcp, onOpenFile, onOpenContextFile, extras } = props;
 
     const turns = turnSpends(entries);
 
@@ -474,6 +477,18 @@ export default function SessionPanel(props: SessionPanelProps) {
                                         {mcpWord(server)}
                                         {server.tools !== undefined ? ` · ${server.tools} ${server.tools === 1 ? "tool" : "tools"}` : ""}
                                     </span>
+                                    {server.needsSignIn && onSignInMcp
+                                        ? (
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                fill="outline"
+                                                title={`Open ${server.name}'s sign-in page in your browser`}
+                                                onClick={() => onSignInMcp(server.name)}>
+                                                Sign in
+                                            </Button>
+                                        )
+                                        : null}
                                     {server.reason ? <span className="session-panel__reason">{server.reason}</span> : null}
                                 </li>
                             ))}

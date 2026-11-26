@@ -121,6 +121,9 @@ export type ToChatHost =
     /** The Compact button in the context meter - shrink this chat's context. */
     | { type: "compact" }
 
+    /** Sign in on an MCP server's row in the Session panel - start that server's sign-in again. */
+    | { type: "signInMcp"; server: string }
+
     /** This chat's runtime and model. Nothing clears it back to the settings' default. */
     | { type: "setAiChoice"; pick?: { provider: string; model?: string; mode?: string; effort?: string } }
 

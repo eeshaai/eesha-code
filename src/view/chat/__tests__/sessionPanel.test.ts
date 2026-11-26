@@ -1,7 +1,9 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import type { LogEntry } from "../../templates/logEntry";
-import { callsText, latestMcp, toolCounts, turnSpends, usageTable } from "../SessionPanel";
+import SessionPanel, { callsText, latestMcp, toolCounts, turnSpends, usageTable } from "../SessionPanel";
 
 /* The Session panel's own reading of a chat's log lines. */
 
@@ -165,5 +167,39 @@ describe("latestMcp", () => {
             entry("notice", { mcp: [{ name: "a", status: "connected" }] }),
             entry("notice")
         ])).toEqual([{ name: "a", status: "connected" }]);
+    });
+});
+
+/* The Sign in button on an MCP server whose runtime says it needs a sign-in. */
+describe("SessionPanel's MCP rows", () => {
+
+    const servers = [
+        { name: "github", status: "failed", needsSignIn: true },
+        { name: "ado", status: "failed", reason: "Connection closed" },
+        { name: "jira", status: "connected", tools: 3 }
+    ];
+
+    const draw = (onSignInMcp?: (server: string) => void) => renderToStaticMarkup(React.createElement(SessionPanel, {
+        entries: [entry("notice", { mcp: servers })],
+        session: [],
+        sessionModels: [],
+        accounts: [],
+        showCost: false,
+        running: false,
+        onSignInMcp,
+        extras: { folders: [] }
+    }));
+
+    it("shows Sign in only on the server that needs one", () => {
+
+        const html = draw(() => undefined);
+
+        expect(html.match(/>Sign in</g)).toHaveLength(1);
+        expect(html).toContain("Open github&#x27;s sign-in page in your browser");
+    });
+
+    it("shows no button when the chat cannot sign in", () => {
+
+        expect(draw()).not.toContain(">Sign in<");
     });
 });

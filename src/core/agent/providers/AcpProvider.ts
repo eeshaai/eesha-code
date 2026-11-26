@@ -11,8 +11,9 @@ import { SecretMasker } from "../../runner/SecretMasker";
 import { AgentProvider, ModelChoice, ModeList, ProviderDeps } from "../AgentProvider";
 import { homeDirectory } from "../../runner/runContext";
 import { AskPermission, ContextUsage, ModelSpend, Spend, addSpend } from "../../models/run";
-import { AcpExtension, AcpExtensionReader, AcpExtensionSession, AcpLocalMcpServer, AcpSessionSetup, extensionsFor } from "./acpExtensions";
-import { ENGINE_FEATURES } from "./acpNotes";
+import { AcpExtension, AcpExtensionReader, AcpExtensionRequestHandler, AcpExtensionSession, AcpLocalMcpServer, AcpSessionSetup, extensionsFor } from "./acpExtensions";
+import { openInBrowser } from "../../process/openInBrowser";
+import { AGENT_CAPABILITIES, ENGINE_FEATURES } from "./acpNotes";
 import { lastAccount, rememberAccount } from "../accountCache";
 import { commandsFrom, keepCommandList, offeredCommands, refusedCommandText } from "../commandListFile";
 import { planFromAcp, planText } from "../plan";
@@ -25,7 +26,7 @@ import { appName } from "../../loader/profilePaths";
 import { resolveAcpAgent, sessionEnvRuntime } from "./acpConfig";
 import { McpResolution, resolveMcpServers, withHostServers } from "./mcpConfig";
 import { AcpMcpServer, runnableCommand, toAcpMcpServers } from "./mcpServers";
-import { redactSecret } from "./redactSecrets";
+import { hideSignInLinks, redactSecret } from "./redactSecrets";
 import { createJail, engineDirectories, openJail, pathsIn } from "./pathJail";
 import type { PathJail } from "./pathJail";
 import { acpCall, askCard, gatePermission, UNANSWERED_NOTE, UNANSWERED_TEXT } from "../permissions";
@@ -127,7 +128,8 @@ import {
  * Session list/fork/delete are out of scope: nothing in the SDD
  * flow uses them.
  * `session/request_permission` and `elicitation/create` are the only
- * client-side requests this file answers; `fs/*` and `terminal/*`
+ * client-side requests this file answers itself - besides a vendor's
+ * own, which its extension answers (`AcpExtension.requests`); `fs/*` and `terminal/*`
  * capabilities are left undeclared because Claude (via
  * `claude-agent-acp`) does its own file and shell I/O as ordinary tool
  * calls rather than asking the client to do it. An unhandled client request is the SDK's to reject, not this
@@ -485,7 +487,7 @@ export class AcpProvider implements AgentProvider {
                     // A tool the host's settings took away, on a runtime
                     // that cannot take it away itself (Kiro v3): refused,
                     // in every mode, before anything else is asked.
-                    const off = turnedOffTool(toolCall, extensions, setup.toolsOff);
+                    const off = turnedOffTool(toolCall, extensions, setup.toolsOff, ctx.params);
 
                     if (off) {
 
@@ -661,6 +663,20 @@ export class AcpProvider implements AgentProvider {
                             early.push([read, params]);
                     });
 
+            // Their own requests - see `AcpExtension.requests`. One that
+            // comes before the session exists is refused: nothing the
+            // person asked for can be waiting on it yet (Kiro v3 may ask
+            // to open a sign-in page by itself while it starts).
+            for (const extension of extensions)
+                for (const [method, answer] of Object.entries(extension.requests ?? {}))
+                    clientApp.onRequest(method, raw => raw, async ({ params }) => {
+
+                        if (!session)
+                            throw new Error("Eesha Code's session is not open yet.");
+
+                        return session.answerRequest(answer, params);
+                    });
+
             const connection = clientApp.connect(stream);
 
             child.once("exit", (code, signal) => connection.close(
@@ -807,6 +823,7 @@ export class AcpProvider implements AgentProvider {
             session.takesImages = takesImages(init.agentCapabilities);
             session.runsOn(model);
             session.noteForExtensions(ENGINE_FEATURES, settings.features);
+            session.noteForExtensions(AGENT_CAPABILITIES, init.agentCapabilities);
 
             for (const [read, params] of early.splice(0))
                 session.receive(read, params);
@@ -897,19 +914,23 @@ export function withToolName(
  * see `ProviderDeps.toolsOff`. Named by the runtime's extension when it
  * can tell (Kiro v3), else by the request's title. Case is ignored.
  *
+ * @param request The whole permission request - where Kiro v3 puts the
+ *                tool's own id (`_meta.kiro.toolId`), beside the tool call.
+ *
  * Exported for tests.
  */
 export function turnedOffTool(
     toolCall: AcpPermissionToolCall | undefined,
     extensions: readonly AcpExtension[],
-    toolsOff: readonly string[]
+    toolsOff: readonly string[],
+    request?: unknown
 ): string | undefined {
 
     if (!toolsOff.length)
         return undefined;
 
     const names = [
-        ...extensions.map(extension => extension.toolName?.(toolCall)),
+        ...extensions.map(extension => extension.toolName?.(toolCall, request)),
         toolCall?.title?.trim()
     ].filter((one): one is string => typeof one === "string" && one.length > 0).map(one => one.toLowerCase());
 
@@ -1926,7 +1947,8 @@ function spawnAgent(
  * Each line is masked first, with `masker`'s values - see
  * {@link registerRawSecret} for what goes in it. A secret the agent
  * picked up on its own (its own config, a file a tool read) is not
- * known here and prints as sent.
+ * known here and prints as sent. Sign-in links are hidden by their
+ * shape - see `hideSignInLinks`.
  *
  * Call it after `Readable.toWeb(child.stdout)`, so the SDK's own reader
  * is attached first and misses nothing. A second `data` listener gets
@@ -1945,7 +1967,7 @@ export function logRawAcp(child: ChildProcessWithoutNullStreams, agentId: string
             const trimmed = line.trim();
 
             if (trimmed)
-                logger.info(`[ACP_RAW] ${agentId}: ${trimmed}`);
+                logger.info(`[ACP_RAW] ${agentId}: ${hideSignInLinks(trimmed)}`);
         }
     };
 
@@ -2156,7 +2178,10 @@ export class AcpAgentSession implements AgentSession {
         note: (key, value) => { this.notes.set(key, value); },
         noted: key => this.notes.get(key),
         request: (method, params) => this.ctx.request(method, params),
-        prompt: text => this.answerTo(text)
+        prompt: text => this.answerTo(text),
+
+        // The address is never logged: it can be a sign-in link.
+        openLink: url => openInBrowser(url, error => logger.warning(`Could not open the browser: ${error.message}`))
     };
 
     constructor(
@@ -2454,7 +2479,7 @@ ${message.prompt}` };
      */
     public async compact(): Promise<{ ok: boolean; reason?: string }> {
 
-        const compacting = this.extensions.find(extension => extension.compact);
+        const compacting = this.compacting();
 
         if (!compacting?.compact)
             return { ok: false, reason: "This runtime cannot compact a conversation." };
@@ -2466,6 +2491,40 @@ ${message.prompt}` };
             return { ok: false, reason: "A turn is still running. Compact once it has finished." };
 
         return compacting.compact(this.extensionView);
+    }
+
+    /**
+     * Starts one MCP server's sign-in again with the runtime extension's
+     * own request - see `AgentSession.signInMcp`. Allowed during a turn:
+     * the agent restarts only that server, which has no tools while it
+     * waits for a sign-in.
+     */
+    public async signInMcp(server: string): Promise<{ ok: boolean; reason?: string }> {
+
+        const signing = this.extensions.find(extension => extension.signInMcp);
+
+        if (!signing?.signInMcp)
+            return { ok: false, reason: "This runtime cannot start an MCP server's sign-in." };
+
+        if (this.disposed)
+            return { ok: false, reason: "The session has ended." };
+
+        return signing.signInMcp(this.extensionView, server);
+    }
+
+    /** Answers one of the agent's own requests with an extension's handler - see `AcpExtension.requests`. */
+    public answerRequest(answer: AcpExtensionRequestHandler, params: unknown): Promise<unknown> {
+
+        return answer(params, this.extensionView);
+    }
+
+    /**
+     * The extension that compacts this session: the first with `compact`
+     * whose agent still has the request - see `AcpExtension.canCompact`.
+     */
+    private compacting(): AcpExtension | undefined {
+
+        return this.extensions.find(extension => extension.compact && extension.canCompact?.(this.extensionView) !== false);
     }
 
     /**
@@ -2972,7 +3031,7 @@ ${message.prompt}` };
 
         // A context reading from a session that can compact says so, which
         // is what puts the Compact button in the meter.
-        if (event.kind === "notice" && event.context && this.extensions.some(extension => extension.compact))
+        if (event.kind === "notice" && event.context && this.compacting())
             event = { ...event, context: { ...event.context, compactable: true } };
 
         // Account usage is stamped with the runtime that reported it and
@@ -3771,6 +3830,13 @@ interface AcpClientApp {
         method: typeof ELICITATION_CREATE,
         handler: (ctx: { params: AcpElicitationRequest; signal?: AbortSignal }) => Promise<AcpElicitationResponse>
     ): AcpClientApp;
+
+    /**
+     * A request the protocol does not define - a vendor's own. `parse`
+     * hands the raw params through; a throw from `handler` goes back to
+     * the agent as an error.
+     */
+    onRequest(method: string, parse: (raw: unknown) => unknown, handler: (ctx: { params: unknown }) => Promise<unknown>): AcpClientApp;
 
     /** A notification the protocol does not define - a vendor's own. `parse` hands the raw params through. */
     onNotification(method: string, parse: (raw: unknown) => unknown, handler: (ctx: { params: unknown }) => void): AcpClientApp;

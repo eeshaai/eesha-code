@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Spend } from "../../../models/run";
 import { ACP_EXTENSIONS } from "../acpExtensions";
-import { KIRO_V3_INFO, KIRO_V3_MCP_GOVERNANCE, KIRO_V3_MCP_STATUS, KIRO_V3_MODE_NOT_FOUND, KIRO_V3_RATE_LIMIT, KIRO_V3_SYSTEM_NOTIFY, KIRO_V3_USAGE, askKiroV3Usage, kiroV3Extension, compactKiroV3, KIRO_V3_COMPACT, kiroV3FallbackText, kiroV3GovernanceText, kiroV3McpList, kiroV3McpText, kiroV3ModeNotFoundText, kiroV3QueuedText, kiroV3RateLimitText, kiroV3SystemText, kiroV3TurnApproval, readKiroV3Info, readKiroV3McpGovernance, readKiroV3McpStatus } from "../kiroV3AcpExtension";
+import { AGENT_CAPABILITIES } from "../acpNotes";
+import { KIRO_V3_INFO, KIRO_V3_MCP_GOVERNANCE, KIRO_V3_MCP_RESET, KIRO_V3_MCP_STATUS, KIRO_V3_MODE_NOT_FOUND, KIRO_V3_OPEN_URL, KIRO_V3_RATE_LIMIT, KIRO_V3_SYSTEM_NOTIFY, KIRO_V3_USAGE, askKiroV3Usage, kiroV3Extension, compactKiroV3, KIRO_V3_COMPACT, kiroV3FallbackText, kiroV3GovernanceText, kiroV3Lists, kiroV3McpList, kiroV3McpText, kiroV3ModeNotFoundText, kiroV3QueuedText, kiroV3RateLimitText, kiroV3SystemText, kiroV3TurnApproval, openKiroV3SignInPage, readKiroV3Info, readKiroV3McpGovernance, readKiroV3McpStatus, signInKiroV3Mcp, withoutSignInLinks } from "../kiroV3AcpExtension";
 
 /*
  * Kiro's v3 engine (KAS 0.66.8), in the shapes observed: its credits
@@ -251,7 +252,7 @@ describe("kiroV3McpText", () => {
         expect(kiroV3McpText(FAILED)).toBe("MCP: broken failed - Connection closed · echo failed - Connection closed");
     });
 
-    it("counts a connected server's tools, and says when one needs a sign-in or is off", () => {
+    it("counts a connected server's tools, and says when one needs a sign-in (never its link) or is off", () => {
 
         expect(kiroV3McpText({
             servers: [
@@ -259,7 +260,7 @@ describe("kiroV3McpText", () => {
                 server("github", "failed", { failedAuthorization: true, authorizationUrl: "https://example.test/auth" }),
                 server("jira", "disabled")
             ]
-        })).toBe("MCP: ado connected (2 tools) · github failed - needs sign-in at https://example.test/auth · jira turned off");
+        })).toBe("MCP: ado connected (2 tools) · github failed - needs sign-in - use Sign in on its row in the Session panel · jira turned off");
     });
 
     it("names the servers the org's policy kept out", () => {
@@ -329,6 +330,151 @@ describe("readKiroV3McpStatus", () => {
         const atStart = await kiroV3Extension.atStart!(turn());
 
         expect(atStart.some(event => event.name === KIRO_V3_MCP_STATUS)).toBe(false);
+    });
+
+    it("keeps the sign-in link out of the line and out of the event's copy of the message", async () => {
+
+        const session = turn();
+
+        await kiroV3Extension.atStart!(session);
+
+        const event = readKiroV3McpStatus({
+            sessionId: "S2",
+            servers: [server("github", "failed", { failedAuthorization: true, authorizationUrl: "https://example.test/auth?client_id=x" })]
+        }, session);
+
+        expect(JSON.stringify(event)).not.toContain("example.test");
+        expect(event).toMatchObject({ raw: { sessionId: "S2", servers: [{ name: "github", status: "failed", failedAuthorization: true }] } });
+    });
+});
+
+describe("withoutSignInLinks", () => {
+
+    it("drops each server's authorizationUrl and keeps the rest", () => {
+
+        expect(withoutSignInLinks({ a: 1, servers: [server("x", "failed", { authorizationUrl: "u", errorMessage: "e" }), server("y", "connected"), "odd"] }))
+            .toEqual({ a: 1, servers: [{ name: "x", status: "failed", errorMessage: "e" }, { name: "y", status: "connected" }, "odd"] });
+    });
+
+    it("hands back anything else as it came", () => {
+
+        expect(withoutSignInLinks(undefined)).toBeUndefined();
+        expect(withoutSignInLinks({ servers: "nope" })).toEqual({ servers: "nope" });
+    });
+});
+
+/* What Kiro lists on `initialize` as `agentCapabilities._meta.kiro.extensionMethods` - kiro-cli 3.6.2 lists compact, not getUsage. */
+describe("kiroV3Lists - Compact only when Kiro lists it", () => {
+
+    const withCapabilities = (capabilities: unknown) => {
+
+        const session = turn();
+
+        session.note(AGENT_CAPABILITIES, capabilities);
+
+        return session;
+    };
+
+    it("is true for a request on the list, false for one off it", () => {
+
+        const session = withCapabilities({ _meta: { kiro: { extensionMethods: [KIRO_V3_COMPACT, "_kiro/session/context"] } } });
+
+        expect(kiroV3Lists(session, KIRO_V3_COMPACT)).toBe(true);
+        expect(kiroV3Extension.canCompact!(session)).toBe(true);
+        expect(kiroV3Extension.canCompact!(withCapabilities({ _meta: { kiro: { extensionMethods: ["_kiro/session/context"] } } }))).toBe(false);
+    });
+
+    it("counts every request as there when Kiro sends no list (an older Kiro)", () => {
+
+        expect(kiroV3Extension.canCompact!(withCapabilities({ loadSession: true }))).toBe(true);
+        expect(kiroV3Extension.canCompact!(turn())).toBe(true);
+    });
+});
+
+/*
+ * The Sign in button, in the shapes kiro-cli 3.6.2's own code uses:
+ * `_kiro/mcp/resetServer` `{ sessionId, serverName, startOAuth }` answered
+ * `{ success: true }`, and `_kiro/openExternalUrl` `{ url, serverName, ... }`
+ * sent while the reset waits.
+ */
+describe("MCP sign-in", () => {
+
+    const LINK = "https://login.example.test/authorize?client_id=c&response_type=code";
+
+    /** A session whose reset sends the sign-in page the way Kiro does, before it answers. */
+    function signing(page: (session: ReturnType<typeof turn> & { openLink(url: string): boolean }) => Promise<unknown> = async () => undefined) {
+
+        const opened: string[] = [];
+
+        const session = Object.assign(turn(), { openLink: (url: string) => { opened.push(url); return true; } });
+
+        session.request = async (method: string, params: unknown) => {
+
+            session.requests.push({ method, params });
+
+            await page(session);
+
+            return { success: true };
+        };
+
+        return { session, opened };
+    }
+
+    it("restarts the server's sign-in and opens the page Kiro sends for it", async () => {
+
+        const { session, opened } = signing(session => openKiroV3SignInPage({ url: LINK, serverName: "github", oauthCompletion: "callback" }, session));
+
+        expect(await signInKiroV3Mcp(session, " github ")).toEqual({ ok: true });
+        expect(session.requests).toEqual([{ method: KIRO_V3_MCP_RESET, params: { sessionId: "S2", serverName: "github", startOAuth: true } }]);
+        expect(opened).toEqual([LINK]);
+    });
+
+    it("says so when Kiro sent no page, or refused the restart", async () => {
+
+        expect(await signInKiroV3Mcp(signing().session, "github"))
+            .toMatchObject({ ok: false, reason: expect.stringContaining("sent no sign-in page") });
+
+        const refusing = turn(async () => { throw new Error("MCP governance is disabled by your organization"); });
+
+        expect(await signInKiroV3Mcp(refusing, "github"))
+            .toEqual({ ok: false, reason: "Kiro could not restart github: MCP governance is disabled by your organization" });
+
+        expect(await signInKiroV3Mcp(turn(async () => ({ success: false })), "github"))
+            .toEqual({ ok: false, reason: "Kiro did not restart github." });
+
+        expect(await signInKiroV3Mcp(turn(), "  ")).toEqual({ ok: false, reason: "No MCP server was named." });
+    });
+
+    it("refuses a page for a server nobody clicked Sign in on, and one after its sign-in ended", async () => {
+
+        const { session, opened } = signing();
+
+        await expect(openKiroV3SignInPage({ url: LINK, serverName: "github" }, session)).rejects.toThrow("clicked Sign in");
+
+        await signInKiroV3Mcp(session, "github");
+
+        await expect(openKiroV3SignInPage({ url: LINK, serverName: "github" }, session)).rejects.toThrow("clicked Sign in");
+        expect(opened).toEqual([]);
+    });
+
+    it("refuses a page that is not a web address, and one for another server", async () => {
+
+        const { session, opened } = signing(async session => {
+
+            await expect(openKiroV3SignInPage({ url: "file:///C:/Windows/notepad.exe", serverName: "github" }, session)).rejects.toThrow("not a web address");
+            await expect(openKiroV3SignInPage({ url: LINK, serverName: "slack" }, session)).rejects.toThrow("clicked Sign in");
+            await expect(openKiroV3SignInPage({ url: LINK }, session)).rejects.toThrow("clicked Sign in");
+        });
+
+        expect((await signInKiroV3Mcp(session, "github")).ok).toBe(false);
+        expect(opened).toEqual([]);
+    });
+
+    it("is offered by the kiro-v3 extension, which tells Kiro it takes the page request", () => {
+
+        expect(kiroV3Extension.signInMcp).toBeDefined();
+        expect(Object.keys(kiroV3Extension.requests ?? {})).toEqual([KIRO_V3_OPEN_URL]);
+        expect(kiroV3Extension.clientMeta).toEqual({ kiro: { openExternalUrl: true } });
     });
 });
 

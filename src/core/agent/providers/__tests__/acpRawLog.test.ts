@@ -42,6 +42,19 @@ describe("logRawAcp", () => {
         ]);
     });
 
+    it("never logs a sign-in link, plain or escaped inside JSON", async () => {
+
+        expect(await logged([
+            '{"method":"_kiro/openExternalUrl","params":{"url":"https://login.test/authorize?client_id=c&state=s","serverName":"github"}}\n',
+            '{"servers":[{"authorizationUrl":"https:\\/\\/login.test\\/a?response_type=code\\u0026client_id=c"}]}\n',
+            '{"text":"see https://example.test/docs?page=2"}'
+        ])).toEqual([
+            '[ACP_RAW] kiro-cli: {"method":"_kiro/openExternalUrl","params":{"url":"[sign-in link not logged]","serverName":"github"}}',
+            '[ACP_RAW] kiro-cli: {"servers":[{"authorizationUrl":"[sign-in link not logged]"}]}',
+            '[ACP_RAW] kiro-cli: {"text":"see https://example.test/docs?page=2"}'
+        ]);
+    });
+
     it("masks a registered value, even one cut in half by a chunk boundary", async () => {
 
         const masker = new SecretMasker();

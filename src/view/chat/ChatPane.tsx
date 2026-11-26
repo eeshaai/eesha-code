@@ -489,6 +489,7 @@ export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles,
                     showCost={sessionCost}
                     running={running}
                     onCompact={() => post({ type: "compact" })}
+                    onSignInMcp={server => post({ type: "signInMcp", server })}
                     onOpenFile={path => post({ type: "open", path })}
                     onOpenContextFile={path => post({ type: "openContextFile", path })}
                     extras={sessionExtras ?? { folders: [] }} />,

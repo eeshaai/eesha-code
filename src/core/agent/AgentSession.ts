@@ -718,6 +718,17 @@ export interface AgentSession {
     compact?(): Promise<{ ok: boolean; reason?: string }>;
 
     /**
+     * Starts one MCP server's sign-in again (Kiro v3) - the Sign in
+     * button on a server whose status says it needs one. The runtime
+     * restarts the server and its sign-in page opens in the browser.
+     *
+     * Resolves with whether the page was opened and, when not, why - in
+     * words for the person, never thrown. Optional because only some
+     * runtimes can.
+     */
+    signInMcp?(server: string): Promise<{ ok: boolean; reason?: string }>;
+
+    /**
      * Releases this session's process-side resources. Not a delete:
      * the provider keeps its state, so the conversation can be
      * reopened.

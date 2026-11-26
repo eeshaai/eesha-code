@@ -7,3 +7,6 @@
 
 /** The feature flags (`EngineSettings.features`) the session was opened with. */
 export const ENGINE_FEATURES = "engine.features";
+
+/** What the agent said it can do on `initialize` - its `agentCapabilities`, as sent. */
+export const AGENT_CAPABILITIES = "agent.capabilities";

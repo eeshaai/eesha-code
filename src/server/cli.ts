@@ -8,6 +8,7 @@ import { ADO_SOURCES, CONNECTOR_IDS, GITHUB_SOURCES, readConnectors, saveConnect
 import { runMcpBridge } from "./connectors/mcpBridge";
 import { remotesOf } from "./connectors/remotes";
 import { checkThisMachine, doctorLine, doctorReport } from "./doctor";
+import { openInBrowser as openLink } from "../core/process/openInBrowser";
 import { eeshaHome, eeshaPath } from "./paths";
 import { ensureKey, KEY_HEADER } from "./security";
 import { readServerFile, removeServerFile } from "./serverFile";
@@ -158,20 +159,10 @@ function wait(ms: number): Promise<void> {
 /** Opens the link in the default browser. */
 function openInBrowser(url: string): void {
 
-    const [command, args] = process.platform === "win32"
-        ? ["cmd", ["/c", "start", "", url]]
-        : process.platform === "darwin"
-            ? ["open", [url]]
-            : ["xdg-open", [url]];
+    const failed = () => console.log("Could not open the browser - open the link above yourself.");
 
-    try {
-
-        spawn(command, args, { detached: true, stdio: "ignore", windowsHide: true }).unref();
-
-    } catch {
-
-        console.log("Could not open the browser - open the link above yourself.");
-    }
+    if (!openLink(url, failed))
+        failed();
 }
 
 function printRunning(status: Status, key: string): void {

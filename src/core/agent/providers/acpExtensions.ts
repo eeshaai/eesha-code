@@ -53,6 +53,16 @@ export interface AcpExtension {
     readonly updates?: Readonly<Record<string, AcpExtensionReader>>;
 
     /**
+     * The vendor's own requests to Eesha Code this extension answers, by
+     * method name (Kiro v3's `_kiro/openExternalUrl`). Each gets the raw
+     * params and the session, and resolves with the answer. A throw goes
+     * back to the agent as an error, its message the reason. One that
+     * comes before the session exists is refused. Any other request is
+     * the ACP library's to refuse ("method not found").
+     */
+    readonly requests?: Readonly<Record<string, AcpExtensionRequestHandler>>;
+
+    /**
      * Runs once each turn has ended, before whoever ran the turn is
      * released - the only point where an event still reaches a caller that
      * disposes the session as soon as the turn is over. May ask the agent
@@ -117,6 +127,23 @@ export interface AcpExtension {
      * offers the Compact button - see `AgentSession.compact`.
      */
     compact?(session: AcpExtensionSession): Promise<{ ok: boolean; reason?: string }>;
+
+    /**
+     * Whether this session's agent still has the request {@link compact}
+     * sends - for an agent that lists its own requests on `initialize`
+     * (Kiro v3). Read from the session's notes (`AGENT_CAPABILITIES`).
+     * False hides the Compact button. Left out, an extension with
+     * `compact` can always compact.
+     */
+    canCompact?(session: AcpExtensionTurn): boolean;
+
+    /**
+     * Starts one MCP server's sign-in again, with the vendor's own request
+     * (Kiro v3's `_kiro/mcp/resetServer`) - the Sign in button on a server
+     * that needs one. Resolves with whether the sign-in page was opened
+     * and, when not, why. See `AgentSession.signInMcp`.
+     */
+    signInMcp?(session: AcpExtensionSession, server: string): Promise<{ ok: boolean; reason?: string }>;
 
     /**
      * Hands a message sent while a turn is running to that turn, with the
@@ -218,13 +245,15 @@ export interface AcpExtension {
 
     /**
      * The runtime's own name for the tool behind a permission request or
-     * a `tool_call` update, which ACP carries only as a title (Kiro v3)
-     * or in the vendor's `_meta` (Claude). Used to refuse a tool the
-     * settings turned off, and shown in the log line so it can be copied
-     * into that setting. Undefined when it cannot tell - the title is
-     * used then.
+     * a `tool_call` update, which ACP carries only as a title. A vendor
+     * may add it in its own `_meta`: on the tool call (Claude), or on the
+     * permission request itself (Kiro v3's `_meta.kiro.toolId`), which is
+     * why a permission request also hands in `request`, its whole params.
+     * Used to refuse a tool the settings turned off, and shown in the log
+     * line so it can be copied into that setting. Undefined when it cannot
+     * tell - the title is used then.
      */
-    toolName?(toolCall: AcpPermissionToolCall | undefined): string | undefined;
+    toolName?(toolCall: AcpPermissionToolCall | undefined, request?: unknown): string | undefined;
 }
 
 /** What a session is told and what it may not use - see {@link AcpExtension.sessionMeta}. */
@@ -241,6 +270,8 @@ export interface AcpSessionSetup {
 }
 
 export type AcpExtensionReader = (params: unknown, turn: AcpExtensionTurn) => AgentEvent | undefined;
+
+export type AcpExtensionRequestHandler = (params: unknown, session: AcpExtensionSession) => Promise<unknown>;
 
 /** What an extension may do with the session, beyond publishing an event. */
 export interface AcpExtensionTurn {
@@ -287,6 +318,14 @@ export interface AcpExtensionSession extends AcpExtensionTurn {
      * the caller can tell a command that said it failed.
      */
     prompt?(text: string): Promise<string>;
+
+    /**
+     * Opens a web address in the person's browser - for a page the agent
+     * sends after the person asked for it (an MCP server's sign-in). Only
+     * `http:` and `https:`. Returns false when it was refused or nothing
+     * could be started. Left out, nothing can be opened.
+     */
+    openLink?(url: string): boolean;
 }
 
 /** Every extension this build has, by the id `ai.acpAgents.<id>.extensions` names it with. */

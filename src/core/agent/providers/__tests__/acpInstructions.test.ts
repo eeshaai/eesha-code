@@ -44,6 +44,14 @@ describe("Kiro v3", () => {
         expect(kiroV3ToolName({ title: "Run a command" })).toBeUndefined();
         expect(kiroV3ToolName(undefined)).toBeUndefined();
     });
+
+    /* kiro-cli 3.6.2: the permission request's `_meta.kiro.toolId`, beside its tool call. */
+    it("names a tool by the id Kiro sends, before its title or input", () => {
+
+        expect(kiroV3ToolName({ title: "Write File" }, { _meta: { kiro: { toolId: "str_replace" } } })).toBe("str_replace");
+        expect(kiroV3ToolName({ title: "Anything", _meta: { kiro: { toolId: "fs_append" } } })).toBe("fs_append");
+        expect(kiroV3ToolName({ title: "Write File" }, { _meta: { kiro: { toolId: "  " } } })).toBe("fs_write");
+    });
 });
 
 describe("claude-agent-acp", () => {
@@ -119,6 +127,14 @@ describe("turnedOffTool", () => {
         const call = { title: "Editing a.ts", rawInput: { path: "a.ts", oldStr: "x", newStr: "y" } };
 
         expect(turnedOffTool(call, [kiroV3Extension], ["STR_REPLACE"])).toBe("STR_REPLACE");
+    });
+
+    it("matches the tool id on Kiro's permission request, whatever its title says", () => {
+
+        const request = { _meta: { kiro: { toolId: "fs_write" } } };
+
+        expect(turnedOffTool({ title: "A title Kiro renamed" }, [kiroV3Extension], ["fs_write"], request)).toBe("fs_write");
+        expect(turnedOffTool({ title: "A title Kiro renamed" }, [kiroV3Extension], ["fs_write"])).toBeUndefined();
     });
 
     it("matches the request's title when no extension names it", () => {

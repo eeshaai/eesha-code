@@ -1,6 +1,7 @@
 /**
  * Secret hiding for the "Session options" log line, shared by every
- * provider that prints its options before starting a session.
+ * provider that prints its options before starting a session - and
+ * sign-in links kept out of the raw ACP log (see {@link hideSignInLinks}).
  *
  * `env` is a child process's environment, and an MCP server's `env` and
  * `headers` arrive with `${{ env.NAME }}` already expanded - a PAT in
@@ -63,3 +64,21 @@ function redacted(item: unknown): string {
 
 /** Above this many entries an env block is summarized rather than listed. */
 const NAMEABLE_ENV = 20;
+
+/**
+ * The line with every sign-in link in it replaced - for the raw ACP log.
+ *
+ * A sign-in link (OAuth) is a one-time key to an account's sign-in, and
+ * Kiro's guide for ACP clients says never to log one. It is matched by
+ * its shape, not by vendor, so any runtime's is caught: OAuth asks for
+ * `client_id` and `response_type` in the link's query. Written plain,
+ * or inside a JSON string with `/` and `&` escaped (`\/`, `&`).
+ */
+export function hideSignInLinks(line: string): string {
+
+    return line.replace(SIGN_IN_LINK, SIGN_IN_LINK_HIDDEN);
+}
+
+const SIGN_IN_LINK = /https?:(?:\\?\/){2}[^\s"'<>]*?(?:[?&]|\\u0026)(?:client_id|response_type)=[^\s"'<>]*/gi;
+
+const SIGN_IN_LINK_HIDDEN = "[sign-in link not logged]";

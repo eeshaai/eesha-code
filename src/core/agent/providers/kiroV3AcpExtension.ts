@@ -2,6 +2,8 @@ import type { ContextPart, McpServerState } from "../../models/run";
 import type { AgentEvent } from "../AgentSession";
 import type { AcpPermissionToolCall } from "./acpApproval";
 import type { AcpExtension, AcpExtensionSession, AcpExtensionTurn, AcpSessionSetup } from "./acpExtensions";
+import { isWebAddress } from "../../process/openInBrowser";
+import { AGENT_CAPABILITIES } from "./acpNotes";
 import { accountNotice, kiroAccount, kiroCharges, kiroDuration, kiroParts } from "./kiroShared";
 
 /**
@@ -10,8 +12,9 @@ import { accountNotice, kiroAccount, kiroCharges, kiroDuration, kiroParts } from
  *
  * This is the only Kiro engine Eesha Code runs: the `kiro-cli` runtime.
  *
- * Observed on KAS 0.66.8. None of it is in Kiro's public ACP docs, and
- * the engine is a beta, so every field is read as optional.
+ * Observed on KAS 0.66.8, and checked against kiro-cli 3.6.2 and Kiro's
+ * guide for ACP clients (https://kiro.dev/docs/cli/v3/acp-migration/).
+ * Every field is still read as optional.
  *
  * What the usage card needs rides on standard `session/update`s - a
  * `session_info_update` whose `_meta.kiro.kind` says what it is:
@@ -63,6 +66,10 @@ export const KIRO_V3_AGENT_FILE_ERROR = "_kiro/customAgent/config_error";
 
 export const KIRO_V3_STEER = "_session/steer";
 
+export const KIRO_V3_MCP_RESET = "_kiro/mcp/resetServer";
+
+export const KIRO_V3_OPEN_URL = "_kiro/openExternalUrl";
+
 /** Session notes this file keeps - see `AcpExtensionTurn.note`. */
 const HELD = "kiro.v3.held";
 const PARTS = "kiro.v3.parts";
@@ -74,6 +81,8 @@ const GOVERNANCE_LAST = "kiro.v3.mcp.governance.last";
 const GOVERNANCE_SHOWN = "kiro.v3.mcp.governance.shown";
 const STARTED = "kiro.v3.started";
 const STEERING = "kiro.v3.steering";
+const SIGN_IN_ASKED = "kiro.v3.signIn.asked";
+const SIGN_IN_OPENED = "kiro.v3.signIn.opened";
 
 export const kiroV3Extension: AcpExtension = {
 
@@ -91,6 +100,16 @@ export const kiroV3Extension: AcpExtension = {
         [KIRO_V3_MODE_NOT_FOUND]: (params, turn) => warning(KIRO_V3_MODE_NOT_FOUND, params, kiroV3ModeNotFoundText(params), turn),
         [KIRO_V3_AGENT_FILE_ERROR]: (params, turn) => warning(KIRO_V3_AGENT_FILE_ERROR, params, kiroV3AgentFileErrorText(params), turn)
     },
+
+    // Kiro sends `_kiro/openExternalUrl` only to a client that says it
+    // takes it - see {@link openKiroV3SignInPage}.
+    clientMeta: { kiro: { openExternalUrl: true } },
+
+    requests: {
+        [KIRO_V3_OPEN_URL]: (params, session) => openKiroV3SignInPage(params, session)
+    },
+
+    signInMcp: (session, server) => signInKiroV3Mcp(session, server),
 
     steer: (session, text) => steerKiroV3(session, text),
 
@@ -123,6 +142,8 @@ export const kiroV3Extension: AcpExtension = {
 
     compact: session => compactKiroV3(session),
 
+    canCompact: session => kiroV3Lists(session, KIRO_V3_COMPACT),
+
     // kiro-cli 2.24.1: `autopilot` "on" runs tools without asking, "off"
     // asks before file changes. Off: a tool call Kiro never
     // asks about never reaches our folder boundary. The provider answers
@@ -131,7 +152,7 @@ export const kiroV3Extension: AcpExtension = {
 
     sessionMeta: setup => kiroV3SessionMeta(setup),
 
-    toolName: toolCall => kiroV3ToolName(toolCall)
+    toolName: (toolCall, request) => kiroV3ToolName(toolCall, request)
 };
 
 /** The steering entry our standing instructions go in - see {@link kiroV3SessionMeta}. */
@@ -173,16 +194,28 @@ const KIRO_V3_TITLES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Kiro v3's own name for the tool behind a permission request. Its
- * request carries a title, and its call's input: `str_replace` takes
- * `oldStr` and `newStr` (kiro-cli 3.2.1's own code), so that input is
- * named `str_replace` whatever the title says. Otherwise a title that
- * is one of Kiro's own tool titles ("Replace in File") gives the name.
- * Not observed yet.
+ * Kiro v3's own name for the tool behind a permission request.
+ *
+ * Kiro sends it: every permission request has the tool's own id as
+ * `_meta.kiro.toolId` - `str_replace`, `fs_write`, the names
+ * `toolsOff` takes (read from kiro-cli 3.6.2's own code). Some
+ * `tool_call` updates carry the same field. Kiro's guide for ACP
+ * clients says never to work a tool out from its title, so the id is
+ * read first.
+ *
+ * Without it (an older Kiro) the name is worked out as before: the
+ * call's input - `str_replace` takes `oldStr` and `newStr` - and then
+ * a title that is one of Kiro's own ("Replace in File"). Only ever used
+ * to refuse a tool or to name it in the log, never to allow one.
  *
  * Exported for tests.
  */
-export function kiroV3ToolName(toolCall: AcpPermissionToolCall | undefined): string | undefined {
+export function kiroV3ToolName(toolCall: AcpPermissionToolCall | undefined, request?: unknown): string | undefined {
+
+    const id = textOf(kiroMetaOf(request)?.toolId) ?? textOf(kiroMetaOf(toolCall)?.toolId);
+
+    if (id)
+        return id;
 
     const input = toolCall?.rawInput;
 
@@ -195,6 +228,25 @@ export function kiroV3ToolName(toolCall: AcpPermissionToolCall | undefined): str
 }
 
 export const KIRO_V3_COMPACT = "_kiro/session/compact";
+
+/**
+ * Whether Kiro says it has one of its own requests: the list it sends on
+ * `initialize` as `agentCapabilities._meta.kiro.extensionMethods`. Kiro's
+ * guide for ACP clients says to call only what is on it.
+ *
+ * Not every request is: kiro-cli 3.6.2 answers `_kiro/account/getUsage`
+ * and `_kiro/mcp/resetServer` but does not list them (its own code), so
+ * only a request that is on the list is held to it - today, compact.
+ * Without a list (an older Kiro) every request counts as there.
+ *
+ * Exported for tests.
+ */
+export function kiroV3Lists(session: AcpExtensionTurn, method: string): boolean {
+
+    const listed = kiroMetaOf(session.noted(AGENT_CAPABILITIES))?.extensionMethods;
+
+    return !Array.isArray(listed) || listed.includes(method);
+}
 
 /**
  * `_kiro/session/compact` - Kiro writes a summary of the conversation
@@ -283,17 +335,22 @@ export function kiroV3RateMultiplier(choice: unknown): number | undefined {
 
 /**
  * `_kiro/mcp/status` - every MCP server the session has and how it
- * stands, sent each time one changes. Read from KAS 2.24.1's own code:
- * `servers` is a list of `{ name, status }`, status `connecting`,
- * `connected` (with `tools`), `failed` (with `errorMessage`, and
- * `failedAuthorization` / `authorizationUrl` when it needs a sign-in)
- * or `disabled`. With an org MCP registry, `accessModeFilteredServers`
+ * stands, sent each time one changes, the whole list each time. Read
+ * from KAS 2.24.1's own code: `servers` is a list of `{ name, status }`,
+ * status `connecting`, `connected` (with `tools`), `failed` (with
+ * `errorMessage`, and `failedAuthorization` / `authorizationUrl` when it
+ * needs a sign-in) or `disabled`. With an org MCP registry, `accessModeFilteredServers`
  * and `unresolvedRegistryServers` name servers the org's policy kept out.
  *
  * One line in the chat, only when it says something new, and not while
  * a server is still connecting - so a start-up reads as one line, not
  * one per server per step. Until the first message goes out nothing is
  * listening, so the line is kept and {@link heldMcpStatus} shows it then.
+ *
+ * The sign-in link is never shown or kept, here or in the event's copy
+ * of the message: Kiro's guide for ACP clients says a sign-in link must
+ * not be logged or shared. The Sign in button asks Kiro for a fresh one
+ * - see {@link signInKiroV3Mcp}.
  *
  * Exported for tests.
  */
@@ -314,7 +371,28 @@ export function readKiroV3McpStatus(params: unknown, turn: AcpExtensionTurn): Ag
 
     turn.note(MCP_SHOWN, text);
 
-    return { name: KIRO_V3_MCP_STATUS, raw: params, kind: "notice", text, mcp };
+    return { name: KIRO_V3_MCP_STATUS, raw: withoutSignInLinks(params), kind: "notice", text, mcp };
+}
+
+/**
+ * `_kiro/mcp/status` with each server's `authorizationUrl` left out -
+ * see {@link readKiroV3McpStatus}. Anything else is kept as it came.
+ *
+ * Exported for tests.
+ */
+export function withoutSignInLinks(params: unknown): unknown {
+
+    const status = params as { servers?: unknown } | undefined;
+
+    if (!status || typeof status !== "object" || !Array.isArray(status.servers))
+        return params;
+
+    return {
+        ...status,
+        servers: status.servers.map(server => server && typeof server === "object" && "authorizationUrl" in server
+            ? Object.fromEntries(Object.entries(server).filter(([key]) => key !== "authorizationUrl"))
+            : server)
+    };
 }
 
 /**
@@ -336,6 +414,106 @@ function heldMcpStatus(session: AcpExtensionTurn): AgentEvent | undefined {
     const mcp = session.noted(MCP_LIST);
 
     return { name: KIRO_V3_MCP_STATUS, raw: { text }, kind: "notice", text, ...(Array.isArray(mcp) ? { mcp: mcp as McpServerState[] } : {}) };
+}
+
+/**
+ * The Sign in button on an MCP server that needs one. Read from kiro-cli
+ * 3.6.2's own code, as Kiro's guide for ACP clients describes it:
+ *
+ *   1. `_kiro/mcp/resetServer` `{ sessionId, serverName, startOAuth:
+ *      true }` restarts the server and starts its sign-in afresh. Kiro
+ *      answers `{ success: true }` once the sign-in is done, or after
+ *      60 s at most.
+ *   2. While it waits, Kiro sends `_kiro/openExternalUrl` with a fresh
+ *      sign-in page - see {@link openKiroV3SignInPage}, which opens it
+ *      only for the server named here.
+ *   3. `_kiro/mcp/status` then says the server connected, and the MCP
+ *      line shows it.
+ *
+ * Resolves `ok` when the page was opened. A refusal from Kiro (the org
+ * turned MCP off, a server this session does not have) comes back in
+ * Kiro's own words.
+ *
+ * Exported for tests.
+ */
+export async function signInKiroV3Mcp(session: AcpExtensionSession, server: string): Promise<{ ok: boolean; reason?: string }> {
+
+    const name = server.trim();
+
+    if (!name)
+        return { ok: false, reason: "No MCP server was named." };
+
+    session.note(SIGN_IN_ASKED, [...namesNoted(session, SIGN_IN_ASKED), name]);
+    session.note(SIGN_IN_OPENED, namesNoted(session, SIGN_IN_OPENED).filter(one => one !== name));
+
+    try {
+
+        const result = await session.request(KIRO_V3_MCP_RESET, { sessionId: session.sessionId, serverName: name, startOAuth: true }) as
+            { success?: unknown } | undefined;
+
+        if (result?.success !== true)
+            return { ok: false, reason: `Kiro did not restart ${name}.` };
+
+        return namesNoted(session, SIGN_IN_OPENED).includes(name)
+            ? { ok: true }
+            : { ok: false, reason: `Kiro restarted ${name} but sent no sign-in page. The MCP line says how the server stands now.` };
+
+    } catch (error) {
+
+        return { ok: false, reason: `Kiro could not restart ${name}: ${error instanceof Error ? error.message : String(error)}` };
+
+    } finally {
+
+        // One page per click: a page Kiro asks to open later, by itself,
+        // is refused.
+        const asked = namesNoted(session, SIGN_IN_ASKED);
+        const at = asked.indexOf(name);
+
+        session.note(SIGN_IN_ASKED, at < 0 ? asked : [...asked.slice(0, at), ...asked.slice(at + 1)]);
+    }
+}
+
+/**
+ * `_kiro/openExternalUrl` - `{ url, serverName, oauthCompletion,
+ * oauthFlowId? }`, Kiro asking for a sign-in page to be opened (kiro-cli
+ * 3.6.2's own code). Kiro sends it only to a client that says
+ * `clientCapabilities._meta.kiro.openExternalUrl: true`.
+ *
+ * Opened only for a server the person clicked Sign in on, while that
+ * sign-in runs (see {@link signInKiroV3Mcp}), and only an `http:` or
+ * `https:` page. Anything else is refused with an error, and Kiro keeps
+ * the server waiting for a sign-in - its row keeps the button. The
+ * address is never logged or shown: Kiro's guide says a sign-in link
+ * must not be.
+ *
+ * Exported for tests.
+ */
+export async function openKiroV3SignInPage(params: unknown, session: AcpExtensionSession): Promise<Record<string, never>> {
+
+    const { url, serverName } = (params ?? {}) as { url?: unknown; serverName?: unknown };
+
+    const name = textOf(serverName);
+
+    if (!name || !namesNoted(session, SIGN_IN_ASKED).includes(name))
+        throw new Error("Eesha Code opens a sign-in page only for an MCP server the person clicked Sign in on.");
+
+    if (!isWebAddress(url))
+        throw new Error("The sign-in page is not a web address, so Eesha Code did not open it.");
+
+    if (!session.openLink?.(url))
+        throw new Error("Eesha Code could not open the browser.");
+
+    session.note(SIGN_IN_OPENED, [...namesNoted(session, SIGN_IN_OPENED), name]);
+
+    return {};
+}
+
+/** A list of server names kept in the session's notes. */
+function namesNoted(session: AcpExtensionTurn, key: string): string[] {
+
+    const kept = session.noted(key);
+
+    return Array.isArray(kept) ? kept.filter((one): one is string => typeof one === "string") : [];
 }
 
 /**
@@ -446,7 +624,7 @@ export function kiroV3McpText(params: unknown): string | undefined {
             case "failed": {
 
                 const why = server.failedAuthorization === true
-                    ? `needs sign-in${typeof server.authorizationUrl === "string" ? ` at ${server.authorizationUrl}` : ""}`
+                    ? "needs sign-in - use Sign in on its row in the Session panel"
                     : typeof server.errorMessage === "string" && server.errorMessage.trim()
                         ? clipLine(server.errorMessage)
                         : "no reason given";
@@ -566,6 +744,14 @@ function heldWarnings(session: AcpExtensionTurn): AgentEvent[] {
 function textOf(value: unknown): string | undefined {
 
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/** Kiro's own `_meta.kiro` on a message, when it is an object. */
+function kiroMetaOf(message: unknown): Record<string, unknown> | undefined {
+
+    const kiro = (message as { _meta?: { kiro?: unknown } } | undefined)?._meta?.kiro;
+
+    return kiro && typeof kiro === "object" && !Array.isArray(kiro) ? kiro as Record<string, unknown> : undefined;
 }
 
 /**

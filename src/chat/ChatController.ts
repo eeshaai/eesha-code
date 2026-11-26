@@ -282,6 +282,9 @@ export class ChatController {
             case "compact":
                 return this.compact();
 
+            case "signInMcp":
+                return this.signInMcp(message.server);
+
             case "setAiChoice":
 
                 // An evaluation's variant keeps the setup it was made
@@ -2467,6 +2470,43 @@ export class ChatController {
             text: result.ok
                 ? "Compacted - the conversation so far is now a summary. The context meter updates with your next message.\n"
                 : `Not compacted. ${result.reason ?? ""}\n`,
+            stream: "system",
+            meta: { kind: "notice" }
+        });
+    }
+
+    /**
+     * Sign in on an MCP server's row in the Session panel: the open
+     * session asks its runtime to start that server's sign-in again, and
+     * the sign-in page opens in the browser. Only the session this
+     * program still holds can, the same as Compact. The outcome goes into
+     * the thread; the server's state follows in the runtime's MCP line.
+     */
+    private async signInMcp(server: string): Promise<void> {
+
+        const name = typeof server === "string" ? server.trim() : "";
+
+        if (!name)
+            return this.note("No MCP server was named to sign in to.");
+
+        const last = lastSession(this.events.read(), OWNER);
+        const session = last ? this.host.sessions().get(last.sessionId) : undefined;
+
+        if (!session)
+            return this.note("Nothing to sign in to: this conversation is not open in this window. Send a message first, then sign in.");
+
+        if (!session.signInMcp)
+            return this.note("This runtime cannot start an MCP server's sign-in.");
+
+        this.post({ type: "log", text: `Starting the sign-in for MCP server ${name}...\n`, stream: "system", meta: { kind: "notice" } });
+
+        const result = await session.signInMcp(name);
+
+        this.post({
+            type: "log",
+            text: result.ok
+                ? `Opened the sign-in page for ${name} in your browser. The MCP line says when the server connects.\n`
+                : `Sign-in for ${name} did not start. ${result.reason ?? ""}\n`,
             stream: "system",
             meta: { kind: "notice" }
         });

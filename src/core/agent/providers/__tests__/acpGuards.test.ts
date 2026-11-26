@@ -10,7 +10,9 @@ import {
     applyAgentMode, blockedCommandIn
 } from "../AcpProvider";
 import { ACP_EXTENSIONS } from "../acpExtensions";
+import { AGENT_CAPABILITIES } from "../acpNotes";
 import { claudeCliExtension } from "../claudeCliAcpExtension";
+import { KIRO_V3_COMPACT, KIRO_V3_MCP_RESET, KIRO_V3_OPEN_URL, kiroV3Extension } from "../kiroV3AcpExtension";
 import {
     COPILOT_AGENT, COPILOT_AUTOPILOT, COPILOT_PATH_REQUEST, copilotCliExtension, copilotPathRequest
 } from "../copilotCliAcpExtension";
@@ -428,5 +430,48 @@ describe("AcpAgentSession guard", () => {
 
         expect(g.requests).toHaveLength(1);
         expect(g.events.filter(event => event.kind === "notice")).toEqual([]);
+    });
+});
+
+/* Kiro v3's own requests through the session: Compact only while Kiro lists it, and the MCP sign-in. */
+describe("AcpAgentSession with Kiro v3", () => {
+
+    it("refuses Compact once Kiro no longer lists its compact request, and sends it while it does", async () => {
+
+        const g = guardedSession([kiroV3Extension], [], "kiro-cli");
+
+        g.s.noteForExtensions(AGENT_CAPABILITIES, { _meta: { kiro: { extensionMethods: ["_kiro/session/context"] } } });
+
+        expect(await g.s.compact()).toEqual({ ok: false, reason: "This runtime cannot compact a conversation." });
+        expect(g.requests).toEqual([]);
+
+        g.s.noteForExtensions(AGENT_CAPABILITIES, { _meta: { kiro: { extensionMethods: [KIRO_V3_COMPACT] } } });
+
+        await g.s.compact();
+
+        expect(g.requests).toEqual([{ method: KIRO_V3_COMPACT, params: { sessionId: "S" } }]);
+    });
+
+    it("starts an MCP server's sign-in through the extension", async () => {
+
+        const g = guardedSession([kiroV3Extension], [], "kiro-cli");
+
+        await g.s.signInMcp("github");
+
+        expect(g.requests).toEqual([{ method: KIRO_V3_MCP_RESET, params: { sessionId: "S", serverName: "github", startOAuth: true } }]);
+    });
+
+    it("answers Kiro's request to open a page with the extension, which refuses one nobody asked for", async () => {
+
+        const g = guardedSession([kiroV3Extension], [], "kiro-cli");
+
+        await expect(g.s.answerRequest(kiroV3Extension.requests![KIRO_V3_OPEN_URL], { url: "https://login.test/a", serverName: "github" }))
+            .rejects.toThrow("clicked Sign in");
+    });
+
+    it("says a runtime without the sign-in cannot start one", async () => {
+
+        expect(await guardedSession([copilotCliExtension]).s.signInMcp("github"))
+            .toEqual({ ok: false, reason: "This runtime cannot start an MCP server's sign-in." });
     });
 });
