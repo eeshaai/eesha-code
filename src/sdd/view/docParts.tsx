@@ -21,6 +21,21 @@ import type { RunState } from "./runState";
 import type { ImplementState } from "./implementState";
 import type { DocEditing } from "./docEditing";
 
+/**
+ * The task ids on the Next button. A big first wave would stretch the
+ * button across the panel, so only the first three are written out
+ * and the rest are a count - "1, 2.1, 2.2 +17 more". The button's
+ * tooltip still lists every task with its name.
+ */
+function idsOnButton(ids: string[]) {
+
+    const shown = 3;
+
+    return ids.length > shown
+        ? `${ids.slice(0, shown).join(", ")} +${ids.length - shown} more`
+        : ids.join(", ");
+}
+
 export function useDocParts(ctx: RunState & ImplementState & DocEditing) {
 
     const {
@@ -499,7 +514,7 @@ export function useDocParts(ctx: RunState & ImplementState & DocEditing) {
 
                                 setLaunched(nextUp?.id);
                             }}>
-                            Next: {planLabel}{nextStep.length ? ` ${nextStep.map(unit => unit.id).join(", ")}` : ""}
+                            Next: {planLabel}{nextStep.length ? ` ${idsOnButton(nextStep.map(unit => unit.id))}` : ""}
                         </Button>
                     )
                     : null;
