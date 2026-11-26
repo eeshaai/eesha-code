@@ -640,7 +640,7 @@ export class ClaudeAgentSession implements AgentSession {
 
         this.ensureUsable();
 
-        const refused = this.refusedCommand(message);
+        const refused = this.refusedCommand(message) ?? this.refusedWhileCompacting();
 
         if (refused) {
 
@@ -674,7 +674,7 @@ export class ClaudeAgentSession implements AgentSession {
 
         this.ensureUsable();
 
-        const refused = this.refusedCommand(message);
+        const refused = this.refusedCommand(message) ?? this.refusedWhileCompacting();
 
         if (refused) {
 
@@ -893,6 +893,95 @@ export class ClaudeAgentSession implements AgentSession {
     /** The effort level this session runs at, when one was picked - see {@link setEffort}. */
     public effort?: string;
 
+    /** What the CLI has said so far about a Compact that is running - see {@link compact}. */
+    private compaction?: { done: boolean; failed?: string; answer?: string };
+
+    /**
+     * The Compact button: Claude's own `/compact`, sent as a turn. Claude
+     * writes a summary of the conversation and carries on from it, so it
+     * costs a model call. Refused while a turn runs.
+     *
+     * Whether it worked is read from what the CLI says during that turn:
+     * a `compact_boundary` means it did, a `status` with
+     * `compact_result: "failed"` says why it did not. A message sent while
+     * it runs is refused - see {@link refusedWhileCompacting}.
+     */
+    public async compact(): Promise<{ ok: boolean; reason?: string }> {
+
+        if (this.state === "ended")
+            return { ok: false, reason: "The session has ended." };
+
+        if (this.state === "working")
+            return { ok: false, reason: "A turn is still running. Compact once it has finished." };
+
+        const compaction: { done: boolean; failed?: string; answer?: string } = { done: false };
+
+        this.compaction = compaction;
+
+        // Registered before the message is queued - see `sendAndWait`.
+        const settled = this.turn(IDLE_TIMEOUT_MS);
+
+        this.state = "working";
+
+        this.queue.push(sdkMessage({ prompt: "/compact" }, this.id));
+
+        try {
+
+            await settled;
+
+        } catch (error) {
+
+            return { ok: false, reason: `Claude could not compact: ${error instanceof Error ? error.message : String(error)}` };
+
+        } finally {
+
+            this.compaction = undefined;
+        }
+
+        if (compaction.failed)
+            return { ok: false, reason: `Claude did not compact: ${compaction.failed}` };
+
+        if (!compaction.done)
+            return {
+                ok: false,
+                reason: compaction.answer?.trim()
+                    ? `Claude did not compact: ${clip(compaction.answer, VALUE_LIMIT)}`
+                    : "Claude did not compact - there may be nothing to compact yet."
+            };
+
+        return { ok: true };
+    }
+
+    /** Notes what a running Compact needs to know - see {@link compact}. */
+    private watchCompaction(message: SDKMessage): void {
+
+        const compaction = this.compaction;
+
+        if (!compaction)
+            return;
+
+        if (message.type === "system" && message.subtype === "compact_boundary")
+            compaction.done = true;
+
+        if (message.type === "system" && message.subtype === "status" && message.compact_result === "failed")
+            compaction.failed = message.compact_error || "no reason given.";
+
+        if (message.type === "result" && message.subtype === "success")
+            compaction.answer = message.result;
+    }
+
+    /**
+     * The error for a message sent while a Compact runs. Queued behind
+     * `/compact`, it would run as a turn of its own after it, while the
+     * Compact's end released its sender as if its own turn had ended.
+     */
+    private refusedWhileCompacting(): Error | undefined {
+
+        return this.compaction
+            ? new Error("Claude is compacting the conversation. Send your message once it has finished.")
+            : undefined;
+    }
+
     private async setPermissionMode(mode: string): Promise<void> {
 
         const query = this.stream as { setPermissionMode?(mode: string): Promise<void> } | undefined;
@@ -1060,7 +1149,8 @@ export class ClaudeAgentSession implements AgentSession {
                 kind: "notice",
                 progress: true,
                 text: `Context ${percent(context.used, context.size)}% of ${tokens(context.size)} tokens used`,
-                context
+                // Says the Compact button can be offered - see {@link compact}.
+                context: { ...context, compactable: true }
             });
 
         } catch (error) {
@@ -1172,6 +1262,8 @@ export class ClaudeAgentSession implements AgentSession {
     private async publish(message: SDKMessage): Promise<void> {
 
         this.guardMode(message);
+
+        this.watchCompaction(message);
 
         // The whole set, every time. See `background` above.
         if (message.type === "system" && message.subtype === "background_tasks_changed")

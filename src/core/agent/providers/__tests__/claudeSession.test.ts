@@ -449,7 +449,7 @@ describe("ClaudeAgentSession and the context report", () => {
         expect(asked).toBe(true);
         expect(seen).toContainEqual(expect.objectContaining({
             kind: "notice",
-            context: { used: 84000, size: 200000, parts: [{ name: "Messages", tokens: 84000 }] }
+            context: { used: 84000, size: 200000, parts: [{ name: "Messages", tokens: 84000 }], compactable: true }
         }));
     });
 
@@ -480,7 +480,7 @@ describe("ClaudeAgentSession and the context report", () => {
         // No result yet: the turn is still going, and the bar is drawn.
         expect(seen).toContainEqual(expect.objectContaining({
             name: "context_usage",
-            context: { used: 34000, size: 200000 }
+            context: { used: 34000, size: 200000, compactable: true }
         }));
 
         emit({ type: "result", subtype: "success", usage: { input_tokens: 1, output_tokens: 1 } });
@@ -727,5 +727,129 @@ describe("ClaudeAgentSession and slash commands", () => {
             expect.stringContaining("'/add-dir' was not sent")
         ]);
         expect(seen.some(event => event.kind === "idle")).toBe(true);
+    });
+});
+
+/**
+ * The Compact button on the built-in Claude runtime: Claude's own
+ * `/compact`, sent as a turn. Whether it worked comes from what the CLI
+ * says during that turn, not from the turn ending.
+ */
+describe("ClaudeAgentSession compact", () => {
+
+    function withQueue(): { claude: ClaudeAgentSession; emit(message: unknown): void; pushed: ReturnType<typeof vi.spyOn> } {
+
+        const { stream, emit } = fakeStream();
+        const queue = new MessageQueue();
+        const pushed = vi.spyOn(queue, "push");
+
+        const claude = new ClaudeAgentSession(
+            "test-session", stream as never, queue, new AbortController(), async () => undefined, undefined, () => undefined);
+
+        return { claude, emit, pushed };
+    }
+
+    it("sends /compact and says it worked when the CLI marks the conversation compacted", async () => {
+
+        const { claude, emit, pushed } = withQueue();
+
+        const done = claude.compact();
+
+        expect(pushed).toHaveBeenCalledWith(expect.objectContaining({ message: { role: "user", content: "/compact" } }));
+        expect(claude.status).toBe("working");
+
+        emit({ type: "system", subtype: "status", status: "compacting" });
+        emit({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 150000, post_tokens: 9000 } });
+        emit({ type: "result", subtype: "success", result: "" });
+
+        await expect(done).resolves.toEqual({ ok: true });
+        expect(claude.status).toBe("idle");
+    });
+
+    it("says why when the CLI reports the compaction failed", async () => {
+
+        const { claude, emit } = withQueue();
+
+        const done = claude.compact();
+
+        emit({ type: "system", subtype: "status", status: null, compact_result: "failed", compact_error: "Not enough messages to compact." });
+        emit({ type: "result", subtype: "success", result: "" });
+
+        await expect(done).resolves.toEqual({ ok: false, reason: "Claude did not compact: Not enough messages to compact." });
+    });
+
+    it("passes on Claude's own answer when the turn ends without a compaction", async () => {
+
+        const { claude, emit } = withQueue();
+
+        const done = claude.compact();
+
+        emit({ type: "result", subtype: "success", result: "Compacting failed: Not enough messages to compact." });
+
+        await expect(done).resolves.toEqual({ ok: false, reason: "Claude did not compact: Compacting failed: Not enough messages to compact." });
+    });
+
+    it("says the turn failed when it ends in an error", async () => {
+
+        const { claude, emit } = withQueue();
+
+        const done = claude.compact();
+
+        emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["the API said no"] });
+
+        const result = await done;
+
+        expect(result.ok).toBe(false);
+        expect(result.reason).toMatch(/^Claude could not compact: /);
+    });
+
+    it("refuses while a turn is running, and sends nothing", async () => {
+
+        const { claude, emit, pushed } = withQueue();
+
+        const turn = claude.sendAndWait({ prompt: "go" });
+
+        pushed.mockClear();
+
+        await expect(claude.compact()).resolves.toEqual({ ok: false, reason: "A turn is still running. Compact once it has finished." });
+        expect(pushed).not.toHaveBeenCalled();
+
+        emit({ type: "result", subtype: "success", result: "done" });
+
+        await turn;
+    });
+
+    it("refuses a message sent while it runs, and takes messages again after", async () => {
+
+        const { claude, emit, pushed } = withQueue();
+
+        const done = claude.compact();
+
+        pushed.mockClear();
+
+        await expect(claude.sendAndWait({ prompt: "next" })).rejects.toThrow("Claude is compacting the conversation");
+        expect(pushed).not.toHaveBeenCalled();
+
+        emit({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 150000 } });
+        emit({ type: "result", subtype: "success", result: "" });
+
+        await expect(done).resolves.toEqual({ ok: true });
+
+        const turn = claude.sendAndWait({ prompt: "next" });
+
+        expect(pushed).toHaveBeenCalledWith(expect.objectContaining({ message: { role: "user", content: "next" } }));
+
+        emit({ type: "result", subtype: "success", result: "done" });
+
+        await turn;
+    });
+
+    it("refuses on an ended session", async () => {
+
+        const { claude } = withQueue();
+
+        await claude.dispose();
+
+        await expect(claude.compact()).resolves.toEqual({ ok: false, reason: "The session has ended." });
     });
 });
