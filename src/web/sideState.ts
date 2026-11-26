@@ -4,9 +4,10 @@
  * editor takes the middle and the chat moves to the right at its own
  * width.
  *
- * The workspace panel is one column of sections that open and close on
- * their own: Sessions, Files, AI changes, Git and This session. The AI
- * button in the header shows or hides the whole panel.
+ * The workspace panel is one column of sections: Sessions, Files, AI
+ * changes, Git and This session. Only one section is open at a time:
+ * opening one closes the one that was open. The AI button in the header
+ * shows or hides the whole panel.
  *
  * Whether the panel shows, and which sections are open, is kept per
  * session in this browser tab, so a reload of a session shows them
@@ -27,7 +28,7 @@ export interface PanelState {
 
     open: boolean;
 
-    /** The open sections, in FOLDS order. */
+    /** The open section, or none. At most one. */
     folds: Fold[];
 }
 
@@ -37,29 +38,26 @@ export interface PanelState {
  */
 export const PANEL_ON_LOAD: PanelState = { open: true, folds: ["sessions"] };
 
-/** The open sections in FOLDS order, each once. */
-function ordered(folds: readonly Fold[]): Fold[] {
-
-    return FOLDS.filter(fold => folds.includes(fold));
-}
-
-/** A section's head clicked: it opens, or closes when it is open. */
+/**
+ * A section's head clicked: it opens and the one that was open closes.
+ * Already open: it closes, and no section is open.
+ */
 export function toggleFold(now: PanelState, fold: Fold): PanelState {
 
-    return { ...now, folds: ordered(now.folds.includes(fold) ? now.folds.filter(one => one !== fold) : [...now.folds, fold]) };
+    return { ...now, folds: now.folds.includes(fold) ? [] : [fold] };
 }
 
 /**
- * A key or a button that asks for a section: the panel shows, with that
- * section open. Already shown and open: it closes, so the same key hides
- * it again.
+ * A key or a button that asks for a section: the panel shows, with only
+ * that section open. Already shown and open: it closes, so the same key
+ * hides it again.
  */
 export function showFold(now: PanelState, fold: Fold): PanelState {
 
     if (now.open && now.folds.includes(fold))
         return toggleFold(now, fold);
 
-    return { open: true, folds: ordered([...now.folds, fold]) };
+    return { open: true, folds: [fold] };
 }
 
 /** The workspace panel's narrowest width - its width on every page load - and its widest. */
@@ -153,6 +151,8 @@ const PANELS_KEY = "eesha.panels";
  * The panel kept for this session in this browser tab (sessionStorage).
  * Nothing when no session is named, nothing was kept, or what was kept
  * cannot be read. A section name that is not known any more is dropped.
+ * When more than one section was kept open (from before only one could
+ * open), only the top one stays open.
  */
 export function loadPanels(chatId: string | undefined): PanelState | undefined {
 
@@ -166,7 +166,9 @@ export function loadPanels(chatId: string | undefined): PanelState | undefined {
         if (!saved || typeof saved !== "object" || typeof saved.open !== "boolean" || !Array.isArray(saved.folds))
             return undefined;
 
-        return { open: saved.open, folds: ordered(saved.folds.filter((fold): fold is Fold => FOLDS.includes(fold as Fold))) };
+        const kept: unknown[] = saved.folds;
+
+        return { open: saved.open, folds: FOLDS.filter(fold => kept.includes(fold)).slice(0, 1) };
 
     } catch {
 

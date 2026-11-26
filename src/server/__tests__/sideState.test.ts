@@ -27,21 +27,28 @@ describe("the page's layout", () => {
         expect(PANEL_ON_LOAD).toEqual({ open: true, folds: ["sessions"] });
     });
 
-    it("opens and closes a section on its head, keeping the sections in their order", () => {
+    it("opens one section at a time on its head: opening one closes the open one", () => {
 
-        const two = toggleFold(toggleFold(PANEL_ON_LOAD, "git"), "files");
+        const git = toggleFold(PANEL_ON_LOAD, "git");
 
-        expect(two).toEqual({ open: true, folds: ["sessions", "files", "git"] });
-        expect(toggleFold(two, "sessions")).toEqual({ open: true, folds: ["files", "git"] });
+        expect(git).toEqual({ open: true, folds: ["git"] });
+        expect(toggleFold(git, "files")).toEqual({ open: true, folds: ["files"] });
+
+        // The open section's head: it closes, and none is open.
+        expect(toggleFold(git, "git")).toEqual({ open: true, folds: [] });
+        expect(toggleFold({ open: true, folds: [] }, "sessions")).toEqual({ open: true, folds: ["sessions"] });
     });
 
-    it("shows the panel with a section open from a key, and closes the section when it is on screen already", () => {
+    it("shows the panel with only the asked section open from a key, and closes the section when it is on screen already", () => {
 
         const hidden = { open: false, folds: ["git" as const] };
 
-        // Hidden: the panel shows, the section stays open.
+        // Hidden: the panel shows with only the asked section open.
         expect(showFold(hidden, "git")).toEqual({ open: true, folds: ["git"] });
-        expect(showFold(hidden, "files")).toEqual({ open: true, folds: ["files", "git"] });
+        expect(showFold(hidden, "files")).toEqual({ open: true, folds: ["files"] });
+
+        // On screen with another section open: that one closes.
+        expect(showFold({ open: true, folds: ["sessions"] }, "git")).toEqual({ open: true, folds: ["git"] });
 
         // On screen: the same key closes it.
         expect(showFold({ open: true, folds: ["git"] }, "git")).toEqual({ open: true, folds: [] });
@@ -108,10 +115,10 @@ describe("the page's layout", () => {
 
         expect(loadPanels("a")).toBeUndefined();
 
-        savePanels("a", { open: true, folds: ["sessions", "git"] });
+        savePanels("a", { open: true, folds: ["git"] });
         savePanels("b", { open: false, folds: [] });
 
-        expect(loadPanels("a")).toEqual({ open: true, folds: ["sessions", "git"] });
+        expect(loadPanels("a")).toEqual({ open: true, folds: ["git"] });
         expect(loadPanels("b")).toEqual({ open: false, folds: [] });
 
         // No session (the start page): nothing kept, nothing read.
@@ -120,13 +127,16 @@ describe("the page's layout", () => {
         expect(loadPanels(undefined)).toBeUndefined();
 
         // What cannot be read is dropped; a section that is not known any more is left out.
+        // Several kept open (from before one at a time): only the top one stays open.
         kept.set("eesha.panels.c", "not json");
         kept.set("eesha.panels.d", JSON.stringify({ module: "ai", open: true, panel: "git" }));
         kept.set("eesha.panels.e", JSON.stringify({ open: true, folds: ["specs", "git", "sessions"] }));
+        kept.set("eesha.panels.f", JSON.stringify({ open: true, folds: ["specs", "git"] }));
 
         expect(loadPanels("c")).toBeUndefined();
         expect(loadPanels("d")).toBeUndefined();
-        expect(loadPanels("e")).toEqual({ open: true, folds: ["sessions", "git"] });
+        expect(loadPanels("e")).toEqual({ open: true, folds: ["sessions"] });
+        expect(loadPanels("f")).toEqual({ open: true, folds: ["git"] });
 
         vi.stubGlobal("sessionStorage", { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } });
 

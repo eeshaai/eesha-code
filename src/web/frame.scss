@@ -74,11 +74,6 @@
     }
 }
 
-// The head this file draws: the toggle on the left, an own section's buttons on the right.
-.eesha-fold__head {
-    padding-left: 4px;
-}
-
 // The toggle: an arrow that points down while open, the title in small grey
 // capitals, and a short fact while closed.
 .eesha-fold__toggle {
@@ -139,7 +134,9 @@
 }
 
 // An open section whose pane draws its own head: the toggle lies over the
-// pane's title, and the pane's buttons stay on top of it.
+// pane's title, and the pane's buttons stay on top of it. 16px on the left,
+// the same as the library's head that a closed section draws, so the arrow
+// does not move when the section opens.
 .eesha-fold__over {
     position: absolute;
     top: 0;
@@ -148,7 +145,7 @@
     z-index: 1;
     display: flex;
     height: 32px;
-    padding-left: 4px;
+    padding-left: 16px;
 }
 
 .eesha-fold:not(.eesha-fold--own).is-open > .ee-panel-view > .ee-panel-head,
