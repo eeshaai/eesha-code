@@ -18,7 +18,7 @@ import type { ConnectorId } from "./config";
 const ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798";
 
 const CLI: Record<ConnectorId, { name: string; install: string }> = {
-    ado: { name: "az", install: "Install the Azure CLI: https://aka.ms/installazurecli - then sign in here." },
+    ado: { name: "az", install: "Install the Azure CLI: https://learn.microsoft.com/cli/azure/install-azure-cli - then sign in here." },
     github: { name: "gh", install: "Install the GitHub CLI: https://cli.github.com - then sign in here." }
 };
 

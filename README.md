@@ -18,17 +18,17 @@ Tested on Windows. It installs on macOS and Linux too, but has not been tried th
 
 Each runtime needs its own program installed and on your PATH. Eesha Code does not sign you in to anything: each runtime uses the sign-in its program already has on this machine.
 
-| Runtime | Program | Install it with |
-|---|---|---|
-| `claude` | `claude` (Claude Code) | `npm install -g @anthropic-ai/claude-code`, or Anthropic's installer. Or set `CLAUDE_CLI_PATH` to a copy you have. |
-| `ghcp` | `copilot` (GitHub Copilot CLI) | `npm install -g @github/copilot`. Or set `COPILOT_CLI_PATH` to a copy you have. |
-| `kiro-cli` | `kiro-cli` (Kiro's v3 engine) | Kiro's own installer |
-| `copilot-cli` | `copilot` | Same as `ghcp` |
-| `claude-cli` | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` |
-| `gemini-cli` | `gemini` | Google's Gemini CLI |
-| `codex-cli` | `codex-acp` | The Codex ACP adapter |
-| `cursor-cli` | `cursor-agent` | Cursor's CLI |
-| `opencode-cli` | `opencode` | OpenCode |
+| Runtime | Program | Install it with | Install page |
+|---|---|---|---|
+| `claude` | `claude` (Claude Code) | `npm install -g @anthropic-ai/claude-code`, or Anthropic's installer. Or set `CLAUDE_CLI_PATH` to a copy you have. | [Claude Code setup](https://code.claude.com/docs/en/setup) |
+| `ghcp` | `copilot` (GitHub Copilot CLI) | `npm install -g @github/copilot`. Or set `COPILOT_CLI_PATH` to a copy you have. | [Install Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli) |
+| `kiro-cli` | `kiro-cli` (Kiro's v3 engine) | Kiro's own installer | [Kiro CLI installation](https://kiro.dev/docs/cli/installation/) |
+| `copilot-cli` | `copilot` | Same as `ghcp` | [Install Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli) |
+| `claude-cli` | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` | [claude-agent-acp](https://github.com/agentclientprotocol/claude-agent-acp) |
+| `gemini-cli` | `gemini` | Google's Gemini CLI | [Gemini CLI](https://github.com/google-gemini/gemini-cli) |
+| `codex-cli` | `codex-acp` | The Codex ACP adapter | [codex-acp](https://github.com/agentclientprotocol/codex-acp) |
+| `cursor-cli` | `cursor-agent` | Cursor's CLI | [Cursor CLI installation](https://cursor.com/docs/cli/installation) |
+| `opencode-cli` | `opencode` | OpenCode | [OpenCode docs](https://opencode.ai/docs/) |
 
 `claude` and `ghcp` drive Claude Code and the Copilot CLI through their makers' SDKs. The other runtimes talk to their program over ACP.
 
@@ -237,7 +237,7 @@ A file link in the thread opens the file as a tab, but only a file inside the se
 
 Connectors let the agent read Azure DevOps and GitHub, and change them where you allow it. They belong to the whole machine, not to one folder or session. Open them in Settings › Connectors, or use `eesha connect` (section 3).
 
-1. **Sign in.** Each card has Sign in, which runs the program's own sign-in: `az login` for Azure DevOps, `gh auth login --web` for GitHub. The browser opens, and GitHub's one-time code shows on the card. If you are already signed in, the card says who. If the program is not installed, the card says how to install it. Eesha Code never keeps a password; it asks `az` or `gh` for a short-lived token and keeps it in memory only.
+1. **Sign in.** Each card has Sign in, which runs the program's own sign-in: `az login` for Azure DevOps, `gh auth login --web` for GitHub. The browser opens, and GitHub's one-time code shows on the card. If you are already signed in, the card says who. If the program is not installed, the card says how to install it. Install pages: [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) for Azure DevOps, [GitHub CLI](https://cli.github.com) for GitHub. Eesha Code never keeps a password; it asks `az` or `gh` for a short-lived token and keeps it in memory only.
 2. **Connect (or Edit)** opens a window with two parts:
    1. **What is in reach.** It starts with what your folders' git remotes point to. Then GitHub lists your account and its organizations, each with its repos; tick an owner for all its repos, new ones too, or open it and tick only some. Azure DevOps lists each organization you belong to with its projects; ticking an organization ticks the projects it has now, not ones made later. You can add more by hand (`owner`, `owner/repo`, or `org/project`). Save needs at least one ticked.
    2. **Each source: Off, Read, or Read and write.** Azure DevOps: work items, saved queries, repos, pull requests, build pipelines, release pipelines, wiki and test plans. GitHub: repos, files and history, pull requests, issues, actions, releases, discussions and projects. Some are read only. GitHub Projects starts Off and needs `gh auth refresh -s read:project` first.
