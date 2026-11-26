@@ -6,9 +6,10 @@
 // viewport are its (see the PhasePanel section below). What is left
 // here is the header's contents and each tab's own surface.
 
-// One row: title, the phase steps, and the review's own state.
+// One row: the phase steps and the review's own state. No spec name:
+// the editor tab already shows it.
 //
-// The spec folder's path is the title's tooltip. On a narrow panel the row wraps rather than hiding a step.
+// On a narrow panel the row wraps rather than hiding a step.
 .sdd-view {
 
     &__header {
@@ -19,19 +20,6 @@
         row-gap: var(--spacing-xs);
         flex: 0 0 auto;
         min-width: 0;
-    }
-
-    // Capped, so a long spec name cannot push the steps off the row. The
-    // tooltip has the whole name and the folder.
-    &__title {
-        max-width: 20rem;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: var(--font-size-lg);
-        font-weight: 600;
-        line-height: 1.3;
     }
 
     // The steps push what comes after them - the way back to the main

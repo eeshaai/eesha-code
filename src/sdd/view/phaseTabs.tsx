@@ -63,7 +63,7 @@ export function usePhaseTabs(ctx: RunState & ImplementState & DocEditing & DocPa
                             nothing to press.
 
                             Starting the whole remaining plan lives
-                            beside the spec title, where it can be
+                            in the spec header, where it can be
                             reached from any phase - a second button
                             here would be the same button twice on screen,
                             since this tab is only open once every

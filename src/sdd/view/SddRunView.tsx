@@ -61,7 +61,7 @@ export default function SddRunView(props: SddViewProps) {
     const phaseTabs = usePhaseTabs({ ...runState, ...implementState, ...docEditing, ...docParts });
 
     const {
-        title, widths, saveWidths, setSelectedName, current, setTab, shownTab, full, specDir, items,
+        widths, saveWidths, setSelectedName, current, setTab, shownTab, full, items,
         card, actions, tabs, tillDialog, firstTab
     } = { ...runState, ...implementState, ...docEditing, ...docParts, ...phaseTabs };
 
@@ -95,15 +95,7 @@ export default function SddRunView(props: SddViewProps) {
             header={(
             <header className="sdd-view__header">
 
-                {/* The whole name and the spec folder are the title's
-                    tooltip - the name is cut short on a long spec, and
-                    the steps use the room on this row. */}
-                <div
-                    className="sdd-view__title"
-                    title={specDir ? `${title}\n${specDir.replace(/[\\/][^\\/]*$/, "")}` : title}>
-                    {title}
-                </div>
-
+                {/* No spec name here: the editor tab above already shows it. */}
                 <PhaseSteps items={items} selectedId={current?.name} onSelect={setSelectedName} />
 
                 {away
@@ -130,8 +122,8 @@ export default function SddRunView(props: SddViewProps) {
 
                 {tillDialog}
 
-                {/* The count of changed blocks is not shown beside the
-                    title. It is on the Doc tab's "What changed" button,
+                {/* The count of changed blocks is not shown in this
+                    header. It is on the Doc tab's "What changed" button,
                     which is the thing you press when you read it - a
                     number on a header is a fact, and a number on the
                     button that acts on it is an offer. */}

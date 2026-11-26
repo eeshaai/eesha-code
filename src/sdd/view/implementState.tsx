@@ -246,8 +246,6 @@ export function useImplementState(ctx: RunState) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [openWork.map(unit => unit.id).join(" "), waves, nextUp?.id]);
 
-    const specDir = specStages.find(stage => stage.artifact)?.artifact;
-
     /**
      * The chats an execution phase has open or on record in this
      * panel, one bucket each - `implement@wave:2`, `implement@1.4` -
@@ -886,7 +884,7 @@ export function useImplementState(ctx: RunState) {
         planStage, planText, tasks, planLabel, units, unitsDone, launched, setLaunched, chats,
         chatFor, chatTasksOf, laneName, latestChat, openChat, isWorking, waves, implementing,
         yourTurn, doneIds, waveRows, runningWave, waveRowOf, tasksRef, goToRunningWave, pending,
-        openWork, nextSteps, nextUp, nextStep, specDir, gateBehind, lanes, pickedLanes,
+        openWork, nextSteps, nextUp, nextStep, gateBehind, lanes, pickedLanes,
         setPickedLanes, setPickedLane, firstLanes, wantedLane, shownLane, logLines, lanePicker,
         laneOf, showChat, logEntries, phaseUsage, listedRuns, talksTo, paneRun, paneLines, paneKey,
         paneEntries, askingStage, waitingStages, logsLoading, boundary, approves,
