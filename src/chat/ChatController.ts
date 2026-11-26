@@ -850,9 +850,7 @@ export class ChatController {
 
     /**
      * This chat's own pick, when it made one. Kept per chat in the
-     * chat store, not in the workspace pick the spec panel reads:
-     * switching this chat to Copilot must not move every phase to
-     * Copilot too.
+     * chat store: switching this chat to Copilot moves no other chat.
      */
     private pickOf(chatId: string): AiPick | undefined {
 
@@ -865,8 +863,8 @@ export class ChatController {
     /**
      * What the next turn runs on, and how the picker should show it.
      *
-     * The same ladder a phase goes down, with this chat's pick where the
-     * workspace pick would be - or, with no pick, the default runtime
+     * The same ladder a phase goes down, with this chat's pick on top
+     * of the files - or, with no pick, the default runtime
      * when it is on offer, else the first one on offer (see
      * {@link chatPick} and {@link startRuntime}).
      */
@@ -962,9 +960,9 @@ export class ChatController {
             return;
         }
 
-        // A phase chat runs on the spec's AI, held to the runtime its
-        // conversation is on: the picker shows that, and stays locked -
-        // the spec's own picker changes it.
+        // A phase chat runs on the phase's AI from style.yml and
+        // settings.json, held to the runtime its conversation is on:
+        // the picker shows that, and stays locked. Handover moves it.
         const owner = this.host.owner?.();
 
         if (owner) {
@@ -989,12 +987,9 @@ export class ChatController {
 
         const post = async () => {
 
-            const choice = { ...await aiChoiceMessage(this.host.store, this.host.ai) };
+            const choice = { ...await aiChoiceMessage(this.host.ai) };
 
-            // The workspace pick belongs to the spec panel. What this
-            // picker shows as picked is the chat's own, or nothing.
-            delete choice.pick;
-
+            // What this picker shows as picked is the chat's own, or nothing.
             if (resolved.own)
                 choice.pick = resolved.own;
 

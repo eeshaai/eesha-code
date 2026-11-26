@@ -98,9 +98,6 @@ export interface SddHostEvents {
     /** The agent asks something while no tab shows the spec. */
     asked(where: string): void;
 
-    /** Every spec on screen in this workspace is drawn again - the AI pick or the permission mode changed. */
-    redrawAll(): Promise<void>;
-
     /** The spec is done with: nothing runs and nothing shows it. */
     released(): void;
 }
@@ -367,8 +364,6 @@ export function serverSddHost(
         // Putting another spec on screen is the person's click: a page
         // load at its address. Nothing here can do it for them.
         showSpec: async (_spec: DiscoveredSpec) => undefined,
-
-        redrawAll: () => events.redrawAll(),
 
         released: () => events.released()
     };

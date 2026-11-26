@@ -6,7 +6,6 @@ import { logger } from "../core/logging/logger";
 import { type EngineSettings, loadEngineSettings } from "../core/settings/engineSettings";
 import { AiPick } from "../sdd/config/sddConfig";
 import { AiChoiceMessage } from "../shared/runMessages";
-import type { ChatStore } from "./chatStore";
 
 /*
  * The compose row's runtime, model and permission pickers, with no
@@ -57,36 +56,13 @@ export function offeredRuntimes(settings: EngineSettings, env: AiChoiceEnv): str
     return withFake(env.unlisted ? env.unlisted(all, settings) : all);
 }
 
-/*
- * The runtime and model picked in a spec panel's compose row, for the
- * whole workspace. Kept in the chat store, not in settings.json: a
- * settings file is the team's or the person's standing configuration,
- * and "Copilot is out of credits until tomorrow" is neither.
- */
-
-const PICK_KEY = "sdd.aiPick";
-
-export function readAiPick(store: ChatStore): AiPick | undefined {
-
-    const stored = store.get<AiPick>(PICK_KEY);
-
-    // Shape-checked on the way out: saved values outlive builds.
-    return isAiPick(stored) ? stored : undefined;
-}
-
-/** A stored pick's shape - saved values outlive builds. Shared with the chat's own pick. */
+/** A chat's stored pick has this shape - checked, since saved values outlive builds. */
 export function isAiPick(stored: AiPick | undefined): stored is AiPick {
 
     return stored !== undefined && stored !== null && typeof stored.provider === "string"
         && (stored.model === undefined || typeof stored.model === "string")
         && (stored.mode === undefined || typeof stored.mode === "string")
         && (stored.effort === undefined || typeof stored.effort === "string");
-}
-
-/** `undefined` clears it - the files decide again. */
-export async function writeAiPick(store: ChatStore, pick: AiPick | undefined): Promise<void> {
-
-    await store.update(PICK_KEY, pick);
 }
 
 /**
@@ -438,21 +414,11 @@ const PENDING = Symbol("pending");
 /**
  * What the picker is sent. Sent once right away with whatever lists
  * are already in, and again each time a list lands, so the panel is
- * never held up by a CLI.
+ * never held up by a CLI. It has no pick: a chat adds its own.
  */
-export async function aiChoiceMessage(store: ChatStore, env: AiChoiceEnv): Promise<AiChoiceMessage> {
+export async function aiChoiceMessage(env: AiChoiceEnv): Promise<AiChoiceMessage> {
 
     const providers = await providerIds(env);
-
-    // A pick of a runtime the org no longer lists is cleared, so the
-    // files decide again and the picker never shows a value it cannot
-    // offer. The run itself ignores such a pick too (see `aiFor`).
-    const stored = readAiPick(store);
-
-    if (stored && !providers.includes(stored.provider))
-        await writeAiPick(store, undefined);
-
-    const pick = stored && providers.includes(stored.provider) ? stored : undefined;
     const { settled, loading } = await cataloguesIn(providers, env);
 
     const models: NonNullable<AiChoiceMessage["models"]> = {};
@@ -482,8 +448,7 @@ export async function aiChoiceMessage(store: ChatStore, env: AiChoiceEnv): Promi
         ...(Object.keys(models).length ? { models } : {}),
         ...(Object.keys(modes).length ? { modes } : {}),
         ...(loading.length ? { loading } : {}),
-        ...(refreshingNow.length ? { refreshing: refreshingNow } : {}),
-        ...(pick ? { pick } : {})
+        ...(refreshingNow.length ? { refreshing: refreshingNow } : {})
     };
 }
 

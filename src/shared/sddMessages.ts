@@ -3,7 +3,7 @@ import { ReviewNote } from "../view/templates/reviewNotes";
 import type { TaskRun } from "./taskRun";
 import { LogLine, LogMeta, ModelSpend, Spend } from "../core/models/run";
 import {
-    AiChoiceMessage, PluginAppMessage, PluginReplyMessage, PluginRequestMessage, SpecStage, TaskSession
+    PluginAppMessage, PluginReplyMessage, PluginRequestMessage, SpecStage, TaskSession
 } from "./runMessages";
 
 /**
@@ -136,16 +136,6 @@ export type ToPanel =
      */
     | { type: "notesToChat"; stageId: string; text: string }
 
-    /**
-     * The runtime and model every phase runs on from now, picked in the
-     * compose row. One pick for the whole workspace, over every settings
-     * file and style. No `pick` means reset: the files decide again.
-     */
-    | { type: "setAiChoice"; pick?: { provider: string; model?: string; mode?: string; effort?: string } }
-
-    /** The refresh button beside a model picker - fetch the runtime's list again and replace its file. */
-    | { type: "refreshModels"; provider: string }
-
     | { type: "open"; path: string }
 
     /** The whole set, rewritten. There are few of them, and a partial update is a merge nobody needs. */
@@ -209,9 +199,6 @@ export type ToSddView =
     /** The plan rows' commands running now that can be stopped - their buttons show Stop. */
     | { type: "commands"; running: string[] }
     | { type: "error"; text: string }
-
-    /** What the spec's AI picker offers and what is picked - see {@link AiChoiceMessage}. */
-    | { type: "aiChoice"; choice: AiChoiceMessage }
 
     /** Opened from the chat's history: go to this phase's (or chat's) conversation. */
     | { type: "focus"; ownerId: string }

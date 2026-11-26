@@ -225,7 +225,7 @@ export type ToChatView =
 
     /**
      * The picker: what can be picked, and what this chat runs on now.
-     * `locked`: a phase chat - the spec's AI picker chooses, not this one.
+     * `locked`: a phase chat - style.yml and settings.json choose, not this one.
      */
     | { type: "aiChoice"; choice: AiChoiceMessage; current: StageAi; locked?: boolean }
 

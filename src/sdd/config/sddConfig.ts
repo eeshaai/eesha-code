@@ -46,14 +46,12 @@ export interface AiSettings {
 }
 
 /**
- * What the person picked in the panel's compose row: which runtime and
- * which model every phase runs on, until they pick again or reset.
- *
- * Kept by the app, not in any settings file, and it beats every
- * file - settings, the style and a stage that pins its own. That is
- * the point of it: when one runtime's credits run out for the day, the
- * switch has to work without editing a shared file and without a
- * style's own `provider:` quietly winning over the click.
+ * A runtime and model that beat every file - settings, the style and a
+ * stage that pins its own. Two things make one: a chat's own pick in
+ * its compose box, and the runtime a phase's chat is already on when
+ * the files now name another (a session id belongs to the runtime
+ * that issued it). Phases have no pick of their own: style.yml and
+ * settings.json decide.
  *
  * `model` is absent when only the runtime was picked. The model then
  * comes from the files as for any other run on that runtime: its
@@ -171,7 +169,7 @@ export interface SddConfig {
     /** Applies to every `ai` stage that has no entry of its own. */
     ai: AiSettings;
 
-    /** The person's own runtime and model, over every file - see {@link AiPick}. */
+    /** A runtime and model over every file - see {@link AiPick}. */
     aiPick?: AiPick;
 
     /**
@@ -259,9 +257,8 @@ function withFake(ids: string[], fakeRuntime: boolean | undefined): string[] {
 /**
  * The SDD config the settings describe, or the defaults when they say nothing.
  *
- * @param aiPick what the person picked in the panel, if anything. Not
- * a setting - the app holds it - so it arrives beside the slice
- * rather than inside it.
+ * @param aiPick a pick over every file, if any - see {@link AiPick}.
+ * Not a setting, so it arrives beside the slice rather than inside it.
  */
 export function configFromSettings(
     slice: SddSettingsSlice | undefined,
@@ -422,7 +419,7 @@ function sourceText(source: AiSource): string {
     return source === "stage" ? "this stage's ai: in style.yml"
         : source === "style" ? "the style's ai: in style.yml"
             : source === "settings" ? "settings.json"
-                : source === "pick" ? "your pick in the panel"
+                : source === "pick" ? "the chat's own runtime and model"
                     : "the default";
 }
 

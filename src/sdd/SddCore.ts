@@ -95,9 +95,9 @@ export class SddCore {
      * choice. Settings arrive merged across both scopes, workspace then
      * profile winning - the same view every other consumer gets.
      *
-     * @param options.aiPick the runtime and model the person picked in
-     * the panel, over every file - see {@link AiPick}. The app holds
-     * it, so the surface that has it hands it in.
+     * @param options.aiPick the runtime and model a phase's chat is
+     * held to, over every file - see {@link AiPick}. None for a phase
+     * that runs on what the files say.
      */
     static async create(
         paths: SddPaths,

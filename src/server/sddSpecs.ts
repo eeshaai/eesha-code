@@ -293,14 +293,6 @@ export class SddSpecs {
         return this.find(place, spec)?.id;
     }
 
-    /** A saved permission answer was added or removed: every spec on screen sends its compose row's count again. */
-    savedAnswersChanged(): void {
-
-        for (const entry of this.entries)
-            if (entry.view && !entry.released)
-                void entry.controller.savedAnswersChanged();
-    }
-
     /** How many specs have a phase or wave running now - shown with the chats' count. */
     get working(): number {
 
@@ -1008,13 +1000,6 @@ export class SddSpecs {
 
                 this.set(entry, { waiting: true });
                 this.server.toAll({ type: "eesha.sddNote", workspace: place.key, text: `The agent in ${where} is waiting for an answer.` });
-            },
-
-            redrawAll: async () => {
-
-                for (const one of this.entries)
-                    if (one.view && one.place.key === place.key)
-                        await one.controller.refresh();
             },
 
             released: () => {

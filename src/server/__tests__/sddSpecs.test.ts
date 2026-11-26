@@ -13,8 +13,7 @@ import { resetLogSink, setLogSinks } from "../../core/logging/logger";
 import { HISTORY_SUBDIR } from "../../core/loader/constants";
 import { profilePath } from "../../core/loader/profilePaths";
 import { workspaceFolderName } from "../../core/store/databaseLocation";
-import { readAiPick, writeAiPick } from "../../chat/aiChoice";
-import { prefixedStore, SDD_PROFILE_PREFIX, sddStorePrefix } from "../ServerSddHost";
+import { sddStorePrefix } from "../ServerSddHost";
 import type { Connectors } from "../connectors/Connectors";
 import { Memory } from "../memory/Memory";
 import { MemoryStore } from "../memory/memoryStore";
@@ -647,31 +646,6 @@ describe("a spec shown in a tab", () => {
     });
 
     /*
-     * One spec's save can change another's row (a shared steering file,
-     * a moved folder), so a redraw asked by one spec redraws every spec
-     * of the workspace that a tab shows - each in its own tab.
-     */
-    it("redraws two specs of one workspace at once, each in its own tab", async () => {
-
-        await made("first");
-        await made("second");
-        await specs.open("tab-1", placeOf(workspace), "first");
-        await specs.open("tab-2", placeOf(workspace), "second");
-
-        sent.length = 0;
-
-        const [one] = (specs as unknown as { entries: Set<{ controller: { host: { redrawAll(): Promise<void> } } }> }).entries;
-
-        await one.controller.host.redrawAll();
-
-        const drawnIn = (view: string) => sent.filter(item =>
-            item.view === view && item.message.type === "eesha.sdd" && (item.message as { message: { type: string; spec?: { name: string } } }).message.type === "spec");
-
-        expect(drawnIn("tab-1").map(item => (item.message as { message: { spec: { name: string } } }).message.spec.name)).toEqual(["first"]);
-        expect(drawnIn("tab-2").map(item => (item.message as { message: { spec: { name: string } } }).message.spec.name)).toEqual(["second"]);
-    });
-
-    /*
      * A tab closed while its phase runs: the phase keeps running and the
      * spec stays held (and counted as working). When the phase ends,
      * nobody is looking, so the spec is let go - and it is not said to
@@ -707,21 +681,6 @@ describe("a spec shown in a tab", () => {
 });
 
 describe("SDD and the chats are kept apart", () => {
-
-    it("keeps SDD's saved values under their own keys, so a chat's pick never changes SDD's", async () => {
-
-        const key = workspaceKey(workspace);
-        const sdd = prefixedStore(server.store, sddStorePrefix(key));
-
-        await writeAiPick(sdd, { provider: "claude", model: "opus" });
-
-        // What a chat writes, with the chat's own store: the same names with no prefix.
-        await writeAiPick(server.store, { provider: "copilot" });
-
-        expect(readAiPick(sdd)).toEqual({ provider: "claude", model: "opus" });
-        expect(readAiPick(server.store)).toEqual({ provider: "copilot" });
-        expect(sddStorePrefix(key)).not.toBe(SDD_PROFILE_PREFIX);
-    });
 
     it("takes a tab's messages to a spec only when that tab shows the spec - a chat's tab reaches no spec", async () => {
 

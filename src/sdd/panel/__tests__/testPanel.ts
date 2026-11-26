@@ -368,13 +368,6 @@ function hostFor(ctx: TestContext, place: TestPlace, specName: string): SddHost 
 
         showSpec: async spec => { await openSpec(ctx, place, spec.name); },
 
-        redrawAll: async () => {
-
-            for (const one of open.values())
-                if (one.panel)
-                    await one.controller.refresh();
-        },
-
         released: () => { open.delete(specName); }
     };
 }

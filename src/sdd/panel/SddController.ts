@@ -27,9 +27,6 @@ import { loadEngineSettings } from "../../core/settings/engineSettings";
 import { profileDirectory } from "../../core/loader/profilePaths";
 import { AiPick, aiSourcesFor, StyleOrigin } from "../config/sddConfig";
 import type { AgentAttachment } from "../../core/agent";
-import { aiChoiceMessage, modelsOf, readAiPick, refreshModels, writeAiPick } from "../../chat/aiChoice";
-import { type SavedAnswer } from "../../core/models/permissionCard";
-import type { AiChoiceMessage } from "../../shared/runMessages";
 import { WORKFLOWS_SUBDIR } from "../../core/loader/constants";
 import type { PhaseOwner } from "../../chat/chatHost";
 import type { PhaseChat, SddDisposable, SddHost, SddSurface } from "./sddHost";
@@ -499,10 +496,13 @@ export class SddController {
 
     /**
      * A fresh core every time, so a settings or style edit is in
-     * effect on the next phase without reopening the panel. The pick
-     * from the compose row rides in the same way - see `aiChoice.ts`.
+     * effect on the next phase without reopening the panel.
+     *
+     * @param aiPick only for a phase whose conversation is already on
+     * another runtime than the files say - see `heldPick`. Otherwise
+     * style.yml and settings.json decide.
      */
-    private async core(aiPick: AiPick | undefined = readAiPick(this.host.store)): Promise<SddCore> {
+    private async core(aiPick?: AiPick): Promise<SddCore> {
 
         return SddCore.create({
             workspace: this.workspace,
@@ -514,8 +514,8 @@ export class SddController {
 
     /**
      * The pick a phase's conversation holds it to: the runtime and model
-     * it was opened on. A started phase stays there whatever the
-     * workspace pick says now - only Handover or New Session moves it.
+     * it was opened on. A started phase stays there whatever style.yml
+     * and settings.json say now - only Handover or New Session moves it.
      * Nothing for a phase with no
      * conversation.
      *
@@ -738,7 +738,7 @@ export class SddController {
 
     /**
      * The request a phase runs with. With a conversation already open on
-     * another runtime than the workspace pick, it is built again on the
+     * another runtime than the files say, it is built again on the
      * conversation's own runtime - never a silent move. A runtime no
      * longer in `ai.providers` cannot be held to, and says so rather than
      * running somewhere else.
@@ -980,34 +980,6 @@ export class SddController {
             // Row commands still running, so a redrawn row shows Stop.
             this.postCommands();
 
-            // What the compose row's picker offers. Sent now with the
-            // model lists already in, so the picker is never held up by
-            // a CLI, then once more as each runtime's list lands. After
-            // the first fetch every list is cached, so on a later
-            // refresh the follow-ups are immediate.
-            //
-            // Only the runtimes a phase of this spec is on right now are
-            // asked - not every `ai.acpAgents` id, which would start
-            // seven agents that are mostly not installed. A runtime just
-            // picked is in this set on the very next refresh, which the
-            // pick itself triggers.
-            //
-            // The fetches start before the first post, so it already
-            // names those runtimes as loading, and each one ending - with
-            // a list or without - sends again, so no runtime stays shown
-            // as loading.
-            const fetching = [...new Set(message.stages.flatMap(stage => stage.ai ? [stage.ai.provider] : []))]
-                .map(provider => modelsOf(provider, this.host.ai));
-
-            this.post({ type: "aiChoice", choice: await this.choiceMessage() });
-
-            for (const one of fetching)
-                void one.then(async () => {
-
-                    if (this.surface)
-                        this.post({ type: "aiChoice", choice: await this.choiceMessage() });
-                });
-
             // What a freshly opened page does not otherwise learn: a phase can
             // still be running on the host after the page reloads (the
             // tab lost focus and its page was dropped, or the tab
@@ -1186,7 +1158,7 @@ export class SddController {
         const history = this.events.read();
 
         // A started phase shows the runtime its conversation is on, not
-        // the workspace pick - see `heldPick`.
+        // what the files say now - see `heldPick`.
         const heldCores = new Map<string, SddCore>();
 
         for (const stage of spec.state.stages) {
@@ -1493,27 +1465,6 @@ export class SddController {
 
                 return this.post({ type: "phaseChat", stageId: message.stageId, chatId, text: message.text });
             }
-
-            case "setAiChoice":
-                return void this.setAiChoice(message.pick);
-
-            // The refresh button beside a model picker. Sent now so the
-            // button shows it is busy, and again once the fetch ends.
-            case "refreshModels":
-
-                if (typeof message.provider !== "string" || !message.provider.trim())
-                    return;
-
-                {
-                    const refreshing = refreshModels(message.provider.trim(), this.host.ai);
-                    const postChoice = async (): Promise<void> => {
-
-                        if (this.surface)
-                            this.post({ type: "aiChoice", choice: await this.choiceMessage() });
-                    };
-
-                    return void postChoice().then(() => refreshing).then(postChoice);
-                }
 
             case "run":
                 return void this.run(message.stageId, message.revise, message.note);
@@ -1825,54 +1776,6 @@ export class SddController {
             return;
 
         this.post({ type: "baseline", path: artifact, content: baseline(found.spec.folder, this.workspace, artifact) });
-    }
-
-    /**
-     * The compose row's picker: which runtime and model every phase
-     * runs on from now, for the whole workspace. Nothing is sent and no
-     * session is touched here - the next Send, Start, Revise or Next
-     * reads the pick (see `core`) and does what the change calls for
-     * (see `continueSession`). Every open spec panel is re-sent, since
-     * the pick is theirs too.
-     *
-     * Not refused while a phase is working: the pick only matters to
-     * the next turn, and the person switching runtimes because this
-     * one has stopped answering is the usual case, not the odd one.
-     */
-    private async setAiChoice(pick: { provider: string; model?: string; mode?: string } | undefined): Promise<void> {
-
-        await writeAiPick(this.host.store, pick);
-
-        await this.host.redrawAll();
-    }
-
-    /**
-     * The compose row's choices: the runtimes and models, each runtime's
-     * Permissions level, and how many saved answers hold for this spec.
-     */
-    private async choiceMessage(): Promise<AiChoiceMessage> {
-
-        const choice = { ...await aiChoiceMessage(this.host.store, this.host.ai) };
-
-        choice.levels = this.host.permissions.levels(choice.providers);
-        choice.savedAnswers = (await this.savedAnswers()).length;
-
-        return choice;
-    }
-
-    /** The saved answers that hold in this spec's chats. Empty when the spec is gone. */
-    private async savedAnswers(): Promise<SavedAnswer[]> {
-
-        const found = await this.current();
-
-        return found ? this.host.permissions.saved(found.spec.path, this.workspace) : [];
-    }
-
-    /** A saved answer was added or removed somewhere: the compose row's count is sent again. */
-    async savedAnswersChanged(): Promise<void> {
-
-        if (this.surface)
-            this.post({ type: "aiChoice", choice: await this.choiceMessage() });
     }
 
     /** Where this workspace keeps its workflow files. */

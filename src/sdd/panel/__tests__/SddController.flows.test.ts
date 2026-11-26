@@ -2088,8 +2088,7 @@ describe("open questions", () => {
 
 /*
  * A started phase stays on the runtime its conversation is on, whatever
- * the spec's AI says now: a session id belongs to the runtime that
- * issued it.
+ * the files say now: a session id belongs to the runtime that issued it.
  */
 describe("a started phase's runtime", () => {
 
@@ -2100,32 +2099,16 @@ describe("a started phase's runtime", () => {
         runPhaseMock.mockResolvedValue({ success: true, sessionId: "chat-2", written: [], missing: [] });
     });
 
-    it("keeps a revise on the runtime its conversation started on when the spec's AI has moved", async () => {
+    it("keeps a revise on the runtime its conversation started on when settings.json now names another", async () => {
+
+        write(".eesha/settings.json", JSON.stringify({ ai: { "ai@1": { provider: "claude" } } }));
 
         const panel = await show(context());
 
-        await panel.receive({ type: "setAiChoice", pick: { provider: "claude" } });
         await panel.receive({ type: "run", stageId: "requirements", revise: true, note: "and imports" });
 
         await until(() => runPhaseMock.mock.calls.length, count => count > 0);
 
         expect(runPhaseMock.mock.calls[0][0].request.ai.args.provider).toBe("ghcp");
-    });
-});
-
-describe("the Permissions picker", () => {
-
-    it("sends a level for each runtime with the choices", async () => {
-
-        const panel = await show(context());
-
-        await panel.receive({ type: "ready" });
-
-        await until(() => panel.sent<{ choice: { levels?: unknown } }>("aiChoice").length, count => count > 0);
-
-        const choice = panel.sent<{ choice: { providers: string[]; levels?: Record<string, unknown>; savedAnswers?: number } }>("aiChoice")[0].choice;
-
-        expect(Object.keys(choice.levels ?? {})).toEqual(choice.providers);
-        expect(choice.savedAnswers).toBe(0);
     });
 });

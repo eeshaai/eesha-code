@@ -137,7 +137,7 @@ function SpecPane({ chats, loaded, workspaceKey: key, spec, onSpecSend }: Worksp
                         }} />
                     <div className="ee-start__box-foot">
                         <div className="ee-start__picks">
-                            <span className="ee-start__note">Runs on the spec's runtime and model, set in the spec's header. Ctrl+Enter to send</span>
+                            <span className="ee-start__note">Runs on the runtime and model style.yml names for the phase. Ctrl+Enter to send</span>
                         </div>
                         <Button variant="primary" size="lg" className="ee-start__go" disabled={sending} onClick={send}>Send</Button>
                     </div>

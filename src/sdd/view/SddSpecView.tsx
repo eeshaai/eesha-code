@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { LogLine, RunStatus } from "../../core/models/run";
 import { GateRequest } from "../../core/execution/callbacks";
-import { AiChoiceMessage, PluginAppMessage, SpecStage, TaskSession } from "../../shared/runMessages";
+import { PluginAppMessage, SpecStage, TaskSession } from "../../shared/runMessages";
 import { PanelWidths, SessionRunSummary, ToSddView } from "../../shared/sddMessages";
 import { PluginBridge } from "../../view/pluginBridge";
 import { ReviewNote } from "../../view/templates/reviewNotes";
@@ -120,9 +120,6 @@ export default function SddSpecView() {
     const [pluginApps, setPluginApps] = useState<PluginAppMessage[]>([]);
 
     const [pluginSandboxed, setPluginSandboxed] = useState(true);
-
-    /** What the spec's AI picker offers. Sent on every refresh, and again when the model list is in. */
-    const [aiChoice, setAiChoice] = useState<AiChoiceMessage | undefined>();
 
     /** Column widths last dragged. */
     const [widths, setWidths] = useState<PanelWidths | undefined>();
@@ -298,18 +295,6 @@ export default function SddSpecView() {
             } else if (message.type === "pluginReply")
                 pluginBridge.onReply(message.reply);
 
-            // The model list arrives on its own message once the CLI
-            // answers, and every later refresh sends the picker twice -
-            // once without it, once with. The list already in hand is
-            // kept over a message that lacks one, so the model field
-            // never flickers back to free text.
-            else if (message.type === "aiChoice")
-                setAiChoice(prior => ({
-                    ...message.choice,
-                    models: message.choice.models ?? prior?.models,
-                    modes: message.choice.modes ?? prior?.modes
-                }));
-
             else if (message.type === "focus")
                 setFocus(prior => ({ ownerId: message.ownerId, seq: (prior?.seq ?? 0) + 1 }));
 
@@ -359,10 +344,7 @@ export default function SddSpecView() {
             stopPhase={() => host.postMessage({ type: "cancel" })}
             savedDocDrafts={savedDocDrafts}
             onDocDraftsChange={keepDocDrafts}
-            aiChoice={aiChoice}
-            setAiChoice={pick => host.postMessage({ type: "setAiChoice", pick })}
             notesToChat={(stageId, text) => host.postMessage({ type: "notesToChat", stageId, text })}
-            refreshModels={provider => host.postMessage({ type: "refreshModels", provider })}
             startTasks={tasks => host.postMessage({ type: "implement", tasks })}
             runCommand={command => host.postMessage({ type: "runCommand", command })}
             runWorkflow={(name, params) => host.postMessage({ type: "runWorkflow", name, params })}

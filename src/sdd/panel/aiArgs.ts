@@ -7,9 +7,9 @@ import { DEFAULT_PROVIDER } from "../config/sddConfig";
  *
  * Recorded beside a session id so the id is only ever offered back to
  * the runtime that issued it. The plugin's own default when nothing
- * names one, rather than "unknown": since the compose row can switch
+ * names one, rather than "unknown": since a style.yml edit can switch
  * the runtime and switch it back, a record that matched whatever asked
- * for it would hand Copilot a Kiro id the moment the pick was reset.
+ * for it would hand Copilot a Kiro id the moment it was switched back.
  * A record with no provider on it still matches anything - see
  * `sessionToContinue`.
  */

@@ -43,7 +43,7 @@ describe("effortChoiceOf", () => {
     });
 });
 
-/* A spec's phase chat: the spec's header picks the AI, so the box shows only the runtime. */
+/* A spec's phase chat: style.yml and settings.json pick the AI, so the box shows only the runtime. */
 describe("providerPartsOf in a phase chat", () => {
 
     const withModes = { ...choice, modes: { "claude-cli": { modes: [{ id: "default" }, { id: "plan" }] } } };
@@ -59,16 +59,6 @@ describe("providerPartsOf in a phase chat", () => {
         expect(disabled(providerPartsOf(
             { current: on("sonnet"), choice: withModes as never, onPick: () => undefined, locked: true, held: true },
             { running: false, onHandover: () => undefined }))).toEqual({ runtime: true });
-    });
-
-    it("has no mode in a spec's header, and keeps the model and the effort", () => {
-
-        const ids = (noMode: boolean) => providerPartsOf(
-            { current: on("sonnet"), choice: withModes as never, onPick: () => undefined, ...(noMode ? { noMode: true } : {}) },
-            { running: false, onHandover: () => undefined }).map(part => part.id);
-
-        expect(ids(true)).toEqual(["runtime", "model", "effort"]);
-        expect(ids(false)).toEqual(["runtime", "mode", "model", "effort"]);
     });
 
     it("leaves the model and the effort open in a started chat of your own", () => {

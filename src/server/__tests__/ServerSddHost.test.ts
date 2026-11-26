@@ -54,7 +54,6 @@ function events(): SddHostEvents {
         ask: async prompt => { asked.push(prompt); return answer(prompt); },
         openFile: file => { opened.push(file); },
         asked: where => { waiting.push(where); },
-        redrawAll: async () => undefined,
         released: () => undefined
     };
 }

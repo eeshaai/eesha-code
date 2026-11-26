@@ -216,8 +216,8 @@ describe("what a phase runs on", () => {
 });
 
 /*
- * The person's pick from the panel's compose row. It beats every file,
- * including a stage that pins its own runtime - that is what it is for.
+ * A pick - a chat's own, or the runtime a phase's chat is held to. It
+ * beats every file, including a stage that pins its own runtime.
  */
 describe("the person's pick", () => {
 

@@ -112,7 +112,6 @@ function fakeHost() {
         showInfo: text => { done.infos.push(text); },
         announceAsk: () => undefined,
         showSpec: async () => undefined,
-        redrawAll: async () => undefined,
         released: () => { done.released++; }
     };
 

@@ -48,7 +48,7 @@ export function useRunState(props: SddViewProps) {
     }, [nextSessionAt]);
 
     const {
-        notes, saveNotes, baselines, requestBaseline, problems, aiChoice, setAiChoice, notesToChat
+        notes, saveNotes, baselines, requestBaseline, problems, notesToChat
     } = props;
 
     const { pluginApps, pluginSandboxed, pluginBridge } = props;
@@ -1333,7 +1333,7 @@ export function useRunState(props: SddViewProps) {
         sessionCost, docDiff, stopAfterCurrent, setStopAfterCurrent, nextSessionAt, runningCommands, stopCommand,
         nextSessionIn, setNextSessionIn, notes, saveNotes,
         baselines, requestBaseline, notesToChat,
-        problems, aiChoice, setAiChoice, pluginApps, pluginSandboxed, pluginBridge,
+        problems, pluginApps, pluginSandboxed, pluginBridge,
         sessionRuns, sessionLines, requestSessionLines, widths, saveWidths, position, selectedName,
         setSelectedName, chosen, executionLens, landed, selected, docStage, artifact, content, busy,
         draftingStage, current, promptPath, promptText, tab, setTab, nextTab, panePick, setPanePick,

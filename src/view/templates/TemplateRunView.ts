@@ -4,7 +4,7 @@ import { BrowsedParam, Param, Workflow } from "../../core/models/workflowTypes";
 import { GateRequest, RunOutput, RunContext, TaskContext } from "../../core/execution/callbacks";
 import type { PluginUi } from "../../core/plugins/Plugin";
 import { TaskProblem, ValidationIssue } from "../../core/validation/ValidationIssue";
-import { AiChoiceMessage, PluginAppMessage, RunSummary, SpecStage, TaskSession } from "../../shared/runMessages";
+import { PluginAppMessage, RunSummary, SpecStage, TaskSession } from "../../shared/runMessages";
 import type { PanelWidths, SessionRunSummary } from "../../shared/sddMessages";
 import type { SavedAnswerRow } from "../../shared/chatMessages";
 import type { PermissionLevel } from "../../core/models/permissionCard";
@@ -439,29 +439,11 @@ export type SddViewProps = Pick<TemplateRunViewProps,
         onDocDraftsChange?(drafts: DocDrafts): void;
 
         /**
-         * What the spec's AI picker in the header offers and what is
-         * picked - the runtimes, each one's models once they are in, and
-         * the person's own pick. Absent, no picker is drawn.
-         */
-        aiChoice?: AiChoiceMessage;
-
-        /**
-         * The picker's answer: run every phase on this runtime and
-         * model from now, for the whole workspace. No pick means reset
-         * - the settings and style decide again. A phase chat's own
-         * compose box does not choose it: there the pickers are locked.
-         */
-        setAiChoice?(pick?: { provider: string; model?: string; mode?: string }): void;
-
-        /**
          * "Send notes to the chat" on the Doc tab: the open notes as one
          * message, put in the message box of the phase's chat - read back
          * and sent there.
          */
         notesToChat?(stageId: string, text: string): void;
-
-        /** The refresh button beside a model picker - fetch the runtime's list again. */
-        refreshModels?(provider: string): void;
 
         /**
          * The `Run:` task the plan is waiting on a person for - done by

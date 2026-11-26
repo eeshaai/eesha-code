@@ -234,12 +234,6 @@ export interface SddHost {
     /** Puts a spec on screen, as opening it from the specs list does. */
     showSpec(spec: DiscoveredSpec): Promise<void>;
 
-    /**
-     * The runtime and model pick changed for the
-     * whole folder: every spec on screen is drawn again, this one too.
-     */
-    redrawAll(): Promise<void>;
-
     /** This spec is done with: nothing runs and nothing shows it. */
     released(): void;
 }

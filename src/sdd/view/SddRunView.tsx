@@ -16,8 +16,7 @@ import { useContext } from "react";
 
 import PhasePanel from "../../view/PhasePanel";
 import PhaseSteps from "../../view/PhaseSteps";
-import { providerPartsOf } from "../../view/ChatView";
-import { Button, HeaderButton, LibraryMenu, type MenuEntry, ProviderLine, StatusDot } from "../../view/ui";
+import { Button, HeaderButton, LibraryMenu, type MenuEntry, StatusDot } from "../../view/ui";
 import { SddViewProps } from "../../view/templates/TemplateRunView";
 import { useRunState } from "./runState";
 import { useImplementState } from "./implementState";
@@ -34,8 +33,9 @@ import { SpecPageContext } from "./specPage";
  * normal sessions beside the spec. The layout is `PhasePanel`;
  * this file decides what goes in it.
  *
- * The header has the spec's AI picker: the runtime and model every
- * phase runs on from now. A phase chat's own pickers are locked.
+ * The header has no runtime or model picker. Each phase runs on what
+ * style.yml and settings.json say, and a phase chat's own pickers are
+ * locked.
  *
  * There is no tab row. The phase's main view - Doc, or Tasks in the
  * execution phase - shows; the others (Prompt, Logs, Wave graph, a
@@ -62,12 +62,8 @@ export default function SddRunView(props: SddViewProps) {
 
     const {
         title, widths, saveWidths, setSelectedName, current, setTab, shownTab, full, specDir, items,
-        card, actions, tabs, tillDialog, aiChoice, setAiChoice, specStages, isRunning, firstTab
+        card, actions, tabs, tillDialog, firstTab
     } = { ...runState, ...implementState, ...docEditing, ...docParts, ...phaseTabs };
-
-    // What the phase picked runs on, else the first phase that runs a
-    // model - a gate has none.
-    const stageAi = current?.ai ?? specStages.find(stage => stage.ai)?.ai;
 
     const page = useContext(SpecPageContext);
 
@@ -109,20 +105,6 @@ export default function SddRunView(props: SddViewProps) {
                 </div>
 
                 <PhaseSteps items={items} selectedId={current?.name} onSelect={setSelectedName} />
-
-                {stageAi && aiChoice && setAiChoice
-                    ? (
-                        <div className="sdd-view__ai" title="What every phase of this spec runs on from now">
-                            <ProviderLine
-                                look="menus"
-                                capitalizeNames
-                                disabled={isRunning}
-                                parts={providerPartsOf(
-                                    { current: stageAi, choice: aiChoice, onPick: setAiChoice, noMode: true },
-                                    { running: isRunning, onHandover: () => undefined, refreshModels: props.refreshModels })} />
-                        </div>
-                    )
-                    : null}
 
                 {away
                     ? (

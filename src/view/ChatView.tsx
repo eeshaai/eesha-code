@@ -49,19 +49,13 @@ export interface ComposeAi {
     locked?: boolean;
 
     /**
-     * A spec's phase chat: the spec picks the model and effort, in the
-     * spec tab's header. The line here shows only the runtime - a model
-     * or effort picked here would be thrown away, since the turn runs on
-     * the spec's AI. No mode either: see {@link noMode}.
+     * A spec's phase chat: the model and effort come from style.yml and
+     * settings.json. The line here shows only the runtime - a model or
+     * effort picked here would be thrown away, since the turn runs on the
+     * phase's AI. No mode either: every phase writes files, so a mode
+     * like Plan could only stop it from writing its document.
      */
     held?: boolean;
-
-    /**
-     * No Mode button: a spec's header. Every phase writes files, so a
-     * mode like Plan could only stop it from writing its document. The
-     * engine runs the runtime's own default mode (sddConfig.ts `aiFor`).
-     */
-    noMode?: boolean;
 
     /**
      * The Handover button, once the chat has started.
@@ -1923,7 +1917,7 @@ export function providerPartsOf(
     { running, onHandover, refreshModels }: { running: boolean; onHandover(): void; refreshModels?(provider: string): void }
 ): ProviderPart[] {
 
-    const { current, choice, onPick, locked, held, noMode, handover } = ai;
+    const { current, choice, onPick, locked, held, handover } = ai;
 
     const own = choice.pick?.provider === current.provider ? choice.pick : undefined;
     const runtime = runtimeLabel(current.provider);
@@ -1962,12 +1956,12 @@ export function providerPartsOf(
             : {})
     }];
 
-    // A phase chat: the runtime only. The spec's header shows the model
-    // and the effort, and picks them.
+    // A phase chat: the runtime only. The model and the effort come from
+    // style.yml and settings.json.
     if (held)
         return parts;
 
-    const mode = noMode ? undefined : modeChoiceOf(current, choice);
+    const mode = modeChoiceOf(current, choice);
 
     if (mode)
         parts.push({

@@ -377,8 +377,6 @@ export class EeshaServer implements HostServer, SddServer {
             for (const entry of this.chats)
                 if (entry.tab)
                     void entry.controller.savedAnswersChanged();
-
-            this.sdd.savedAnswersChanged();
         });
     }
 
@@ -3163,7 +3161,7 @@ export class EeshaServer implements HostServer, SddServer {
      */
     private async aiOptions(): Promise<AiOptions> {
 
-        const choice = await aiChoiceMessage(this.store, serverAiEnv(text => this.toAll({ type: "eesha.note", text })));
+        const choice = await aiChoiceMessage(serverAiEnv(text => this.toAll({ type: "eesha.note", text })));
 
         let defaultRuntime: string | undefined;
 
