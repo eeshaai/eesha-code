@@ -24,7 +24,7 @@ import { CLAUDE_MEMORY_ACTION, CLAUDE_MEMORY_HELD, CLAUDE_MEMORY_QUESTION, claud
 import { saveMemoryChoices } from "./memory/config";
 import { type Memory, MEMORY_PATH, type SessionPlace } from "./memory/Memory";
 import { SPEC_PATH } from "../shared/specPaths";
-import { APP_INSTRUCTIONS, connectorsNote, standingInstructions } from "./instructions";
+import { APP_INSTRUCTIONS, connectorsNote, isKiroRuntime, KIRO_PLACE, standingInstructions } from "./instructions";
 import { readServerSettings } from "./settings";
 import { isInside, searchFolders } from "./folders";
 import { eeshaPath } from "./paths";
@@ -478,7 +478,8 @@ export class ServerChatHost implements ChatHost {
     }
 
     /**
-     * In this order: Eesha Code's own text about its chat page and the
+     * In this order: on a Kiro runtime, the line that says it runs in
+     * Eesha Code; Eesha Code's own text about its chat page and the
      * connectors connected; `.eesha/system.md` in each folder of the
      * chat, `kiro.md` beside it on a Kiro runtime, and a line naming the
      * tools turned off; the workspace's work item; the memory. See
@@ -486,7 +487,11 @@ export class ServerChatHost implements ChatHost {
      */
     systemInstructions(provider: string): string | undefined {
 
-        const app = [APP_INSTRUCTIONS, connectorsNote(this.server.connectors.connectedIds())].filter(Boolean).join("\n\n");
+        const app = [
+            isKiroRuntime(provider) ? KIRO_PLACE : undefined,
+            APP_INSTRUCTIONS,
+            connectorsNote(this.server.connectors.connectedIds())
+        ].filter(Boolean).join("\n\n");
         const standing = standingInstructions(this.folderList, provider, readServerSettings().runtimes[provider]);
         const link = this.link();
         const line = link

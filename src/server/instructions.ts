@@ -16,9 +16,20 @@ import type { RuntimeTools } from "./settings";
  * `---` block a Kiro steering file starts with) is left out.
  *
  * Eesha Code's own text about its chat page and its connectors
- * (`APP_INSTRUCTIONS`, `connectorsNote`) goes in front of all of these -
- * see `ServerChatHost.systemInstructions`.
+ * (`APP_INSTRUCTIONS`, `connectorsNote`) goes in front of all of these,
+ * with `KIRO_PLACE` before it on a Kiro runtime - see
+ * `ServerChatHost.systemInstructions`.
  */
+
+/**
+ * What a Kiro session is told first. Kiro keeps its own prompt and puts
+ * ours after it. Kiro's prompt tells the model it runs in the Kiro IDE
+ * (built on VS Code) when the client name is not one of Kiro's own, and
+ * we send none. With the name "kiro-cli" it says a terminal instead.
+ * Both are wrong here. Read from kiro-cli 3.6.2's acp-server.js.
+ */
+export const KIRO_PLACE = "You are not running in the Kiro IDE, in VS Code or in a terminal, whatever the text before this says. "
+    + "You are running in Eesha Code. So do not send the person to Kiro IDE or VS Code menus, panels or buttons.";
 
 /**
  * What every session is told about how Eesha Code's chat page shows a

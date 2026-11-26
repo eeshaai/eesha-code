@@ -15,7 +15,7 @@ import type { ChatController } from "../../chat/ChatController";
 import { contentAt } from "../../chat/turnSnapshot";
 import type { ConnectorsConfig } from "../connectors/config";
 import { Connectors } from "../connectors/Connectors";
-import { APP_INSTRUCTIONS, connectorsNote } from "../instructions";
+import { APP_INSTRUCTIONS, connectorsNote, KIRO_PLACE } from "../instructions";
 import { Memory } from "../memory/Memory";
 import { MemoryStore } from "../memory/memoryStore";
 import { ServerChatHost, HostServer } from "../ServerChatHost";
@@ -573,6 +573,16 @@ describe("what a new session is told", () => {
 
         expect(host.systemInstructions("claude")).toBe(`${APP_INSTRUCTIONS}\n\n${connectorsNote(["ado"])}\n\nBe brief.`);
     });
+
+    it("tells a Kiro runtime first that it runs in Eesha Code, and no other runtime", () => {
+
+        const { host } = setUp([temporaryFolder()]);
+
+        expect(host.systemInstructions("kiro-cli")).toBe(`${KIRO_PLACE}\n\n${APP_INSTRUCTIONS}`);
+        expect(host.systemInstructions("Kiro-work")).toBe(`${KIRO_PLACE}\n\n${APP_INSTRUCTIONS}`);
+        expect(host.systemInstructions("claude")).not.toContain(KIRO_PLACE);
+        expect(host.systemInstructions("copilot")).not.toContain(KIRO_PLACE);
+    });
 });
 
 describe("memory in a chat", () => {
@@ -613,7 +623,7 @@ describe("memory in a chat", () => {
         fs.mkdirSync(path.join(work, ".eesha"));
         fs.writeFileSync(path.join(work, ".eesha", "system.md"), "Be brief.");
 
-        expect(setUp([work]).host.systemInstructions("kiro-cli")).toBe(`${APP_INSTRUCTIONS}\n\nBe brief.`);
+        expect(setUp([work]).host.systemInstructions("kiro-cli")).toBe(`${KIRO_PLACE}\n\n${APP_INSTRUCTIONS}\n\nBe brief.`);
 
         const { host, server } = await inWorkspace(work);
 
@@ -621,7 +631,7 @@ describe("memory in a chat", () => {
 
         const told = host.systemInstructions("kiro-cli")!;
 
-        expect(told.startsWith(`${APP_INSTRUCTIONS}\n\nBe brief.\n\nEesha Code keeps a memory`)).toBe(true);
+        expect(told.startsWith(`${KIRO_PLACE}\n\n${APP_INSTRUCTIONS}\n\nBe brief.\n\nEesha Code keeps a memory`)).toBe(true);
         expect(told).toContain("- 1 (workspace Login bug) Cause");
     });
 
