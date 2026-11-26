@@ -7,6 +7,7 @@ import { type Aliases, chatsIn, folded, specHref } from "./chatGroups";
 import Fold from "./Fold";
 import { chatAddress } from "./pageRoute";
 import { isMac, modName } from "./shortcuts";
+import { loadClosedGroups, saveClosedGroups, type SessionGroupKey } from "./sideState";
 import { useShownPlace } from "./WorkspacePicker";
 
 /*
@@ -25,6 +26,9 @@ import { useShownPlace } from "./WorkspacePicker";
  *    spec's row opens them. Its "⋯" menu has Archive.
  * 4. Chats - every other session here, newest first, then Kiro's own
  *    sessions in its folder.
+ *    Needs you, Specs and Chats close on their heading and stay closed
+ *    across page loads in this browser (sideState.ts). A closed one still
+ *    shows the dot of its most urgent row.
  * 5. Done - the archived specs and sessions here. Closed until clicked.
  *    An archived spec's menu has Unarchive.
  *
@@ -191,6 +195,18 @@ export default function ChatList({ chats, loaded, current, place, open, onToggle
     /** "Done" is open. Starts closed. */
     const [doneOpen, setDoneOpen] = useState(false);
 
+    /** The groups closed on their heading. Kept in this browser, since a row click loads a new page. */
+    const [closed, setClosed] = useState<SessionGroupKey[]>(loadClosedGroups);
+
+    /** A Needs you, Specs or Chats heading clicked: the group closes, or opens when it is closed. */
+    const toggleGroup = (group: SessionGroupKey): void => {
+
+        const next = closed.includes(group) ? closed.filter(one => one !== group) : [...closed, group];
+
+        setClosed(next);
+        saveClosedGroups(next);
+    };
+
     // The same workspace the header's picker names.
     const { shownKey, shown } = useShownPlace(chats, workspaces, place);
     const workspace = shown.workspace;
@@ -312,6 +328,9 @@ export default function ChatList({ chats, loaded, current, place, open, onToggle
                 key: "needs-you",
                 label: "Needs you",
                 tip: "The agent stopped on a question here and waits for your answer.",
+                open: !closed.includes("needs-you"),
+                onToggle: () => toggleGroup("needs-you"),
+                toggleTitle: closed.includes("needs-you") ? "Show what waits for you" : "Hide what waits for you",
                 rows: [...waitingSpecs.map(specRow), ...waitingChats.map(row)]
             }]
             : []),
@@ -320,6 +339,9 @@ export default function ChatList({ chats, loaded, current, place, open, onToggle
                 key: "specs",
                 label: "Specs",
                 tip: `The specs of ${shown.label}, each in one row. A spec's row opens it with its phase chat.`,
+                open: !closed.includes("specs"),
+                onToggle: () => toggleGroup("specs"),
+                toggleTitle: closed.includes("specs") ? "Show the specs" : "Hide the specs",
                 rows: listedSpecs.map(specRow),
                 emptyText: problem ? `The specs could not be read: ${problem}` : specs === undefined ? "Reading the specs..." : needle ? "No spec has that name." : "No specs here yet."
             }]
@@ -327,6 +349,9 @@ export default function ChatList({ chats, loaded, current, place, open, onToggle
         {
             key: "chats",
             label: "Chats",
+            open: !closed.includes("chats"),
+            onToggle: () => toggleGroup("chats"),
+            toggleTitle: closed.includes("chats") ? "Show the chats" : "Hide the chats",
             rows: otherChats.map(row),
             emptyText: needle ? "No session has that name." : !loaded ? "Reading the sessions..." : "No sessions here yet.",
             extra: kiroRows.length

@@ -11,8 +11,9 @@
  * Whether the panel shows, and which sections are open, is kept per
  * session in this browser tab, so a reload of a session shows them
  * again. The editor and its tabs are not kept. The chat's dragged width,
- * and whether the Git section shows its files as a tree, are kept in
- * this browser.
+ * whether the Git section shows its files as a tree, and whether the
+ * Needs you, Specs and Chats groups of the Sessions section are closed,
+ * are kept in this browser.
  */
 
 /** A section of the workspace panel. */
@@ -213,6 +214,46 @@ export function savePanelPlace(place: string): void {
     } catch {
 
         // A browser that keeps nothing: the page's own workspace next time.
+    }
+}
+
+/** A group of the Sessions section that can be closed and stays closed across page loads. */
+export type SessionGroupKey = "needs-you" | "specs" | "chats";
+
+/** In the order the Sessions section lists them. */
+const SESSION_GROUPS: readonly SessionGroupKey[] = ["needs-you", "specs", "chats"];
+
+const CLOSED_GROUPS_KEY = "eesha.closedSessionGroups";
+
+/**
+ * The groups of the Sessions section closed last time in this browser.
+ * Every row there is a link that loads a new page, so without this a
+ * closed group would open again on the next click. Nothing saved, or
+ * nothing that can be read: every group open.
+ */
+export function loadClosedGroups(): SessionGroupKey[] {
+
+    try {
+
+        const saved = JSON.parse(localStorage.getItem(CLOSED_GROUPS_KEY) ?? "null") as unknown;
+
+        return Array.isArray(saved) ? SESSION_GROUPS.filter(group => saved.includes(group)) : [];
+
+    } catch {
+
+        return [];
+    }
+}
+
+export function saveClosedGroups(closed: readonly SessionGroupKey[]): void {
+
+    try {
+
+        localStorage.setItem(CLOSED_GROUPS_KEY, JSON.stringify(SESSION_GROUPS.filter(group => closed.includes(group))));
+
+    } catch {
+
+        // A browser that keeps nothing: every group open next time.
     }
 }
 

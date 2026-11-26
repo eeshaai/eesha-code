@@ -3,7 +3,7 @@ import "./homeGuard";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CHAT_MAX, CHAT_MIN, CHAT_WIDTH, DEFAULT_WIDTHS, editorFits, loadGitTree, loadPanelPlace, loadPanels, loadWidths, PAGE_MIN, PAGE_WIDTH, pageWidth, PANEL_ON_LOAD, saveGitTree, savePanelPlace, savePanels, saveWidths, showFold, toggleFold } from "../../web/sideState";
+import { CHAT_MAX, CHAT_MIN, CHAT_WIDTH, DEFAULT_WIDTHS, editorFits, loadClosedGroups, loadGitTree, loadPanelPlace, loadPanels, loadWidths, PAGE_MIN, PAGE_WIDTH, pageWidth, PANEL_ON_LOAD, saveClosedGroups, saveGitTree, savePanelPlace, savePanels, saveWidths, showFold, toggleFold } from "../../web/sideState";
 
 /** A browser's storage, holding what a test puts in it. */
 function storage(saved: Record<string, string> = {}) {
@@ -169,5 +169,31 @@ describe("the page's layout", () => {
 
         expect(loadGitTree()).toBe(false);
         expect(() => saveGitTree(true)).not.toThrow();
+    });
+
+    it("keeps which of the Needs you, Specs and Chats groups are closed; every group open when nothing was saved or the browser keeps nothing", () => {
+
+        const kept = storage();
+
+        expect(loadClosedGroups()).toEqual([]);
+
+        // Read back in the order the section lists them.
+        saveClosedGroups(["chats", "needs-you", "specs"]);
+        expect(loadClosedGroups()).toEqual(["needs-you", "specs", "chats"]);
+
+        saveClosedGroups([]);
+        expect(loadClosedGroups()).toEqual([]);
+
+        // What cannot be read is dropped; a group that is not known any more is left out.
+        kept.set("eesha.closedSessionGroups", "not json");
+        expect(loadClosedGroups()).toEqual([]);
+
+        kept.set("eesha.closedSessionGroups", JSON.stringify(["pinned", "chats"]));
+        expect(loadClosedGroups()).toEqual(["chats"]);
+
+        vi.stubGlobal("localStorage", { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } });
+
+        expect(loadClosedGroups()).toEqual([]);
+        expect(() => saveClosedGroups(["chats"])).not.toThrow();
     });
 });
