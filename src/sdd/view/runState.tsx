@@ -21,9 +21,10 @@ import { useScrolledLine } from "./scrolledLine";
 import { anchorNotes, notesByLine, reviseInstruction } from "../../view/templates/reviewNotes";
 import { RunPick, stageOf } from "./sessionRuns";
 import { onSddFocus } from "./host";
-import { RequirementPreview, anchorId, anchorsByLine, parseRefLink, requirementAnchors, requirementPreviews, resolveRef } from "./specRefs";
-import { parseTasks, parseWaves, SpecTask } from "./taskList";
-import { OUTLINE_TASK_LEVELS, NOTHING_CLOSED, positionOf, beforeGate, underReview, FLASH, FLASH_MS, NOTE_FLASH, lensDocOf, keepHereInView, Mark, sameMarks, TYPE_SCALES } from "./runViewHelpers";
+import { RequirementPreview, anchorId, anchorsByLine, matchesTarget, parseRefLink, requirementAnchors, requirementPreviews, resolveRef } from "./specRefs";
+import { taskMarks } from "./taskMarks";
+import { allTasks, parseTasks, parseWaves, SpecTask } from "./taskList";
+import { OUTLINE_TASK_LEVELS, NOTHING_CLOSED, positionOf, beforeGate, underReview, FLASH, FLASH_MS, NOTE_FLASH, lensDocOf, keepHereInView, Mark, sameMarks, samePath, TYPE_SCALES } from "./runViewHelpers";
 import { SddViewProps } from "../../view/templates/TemplateRunView";
 
 export function useRunState(props: SddViewProps) {
@@ -979,6 +980,29 @@ export function useRunState(props: SddViewProps) {
 
     const inlineRows = useMemo(() => inlinePlan ? parseTasks(settled) : [], [inlinePlan, settled]);
 
+    const planText = planArtifact ? documents[planArtifact] : undefined;
+
+    /**
+     * The tasks that cite each requirement and criterion of the document
+     * on screen, by its line - drawn after them as "Tasks 1.2, 3.1", or
+     * "No task". Read from the saved plan. Each citation there is
+     * resolved the way the plan page resolves it: a link by its href, the
+     * `_Requirements: 1.2_` spelling by the phase it names. Nothing is
+     * written into the document.
+     *
+     * None on the plan itself.
+     */
+    const citingTasks = useMemo(() => {
+
+        if (!artifact || !planArtifact || samePath(artifact, planArtifact))
+            return new Map<number, string[]>();
+
+        return taskMarks(body, docStage?.prefix, planText, target => "href" in target
+            ? samePath(resolveRef(planArtifact, target.href), artifact)
+            : samePath(specStages.find(stage => stage.artifact !== undefined && matchesTarget(stage.name, target.noun))?.artifact, artifact));
+
+    }, [artifact, planArtifact, planText, body, docStage?.prefix, specStages]);
+
     /**
      * This document's headings, with the file's own line numbers - and,
      * on the plan, its tasks under them, so the outline is a map of the
@@ -1109,8 +1133,11 @@ export function useRunState(props: SddViewProps) {
      * criteria to flash once it is on screen. Cleared when the flash
      * ends, so returning to that document later restores the reader's
      * own position rather than jumping again.
+     *
+     * With `task`, it lands on that task's row in the plan instead - a
+     * task id pressed in a mark on the requirements page.
      */
-    const [jump, setJump] = useState<{ artifact: string; target: string; refs: string[]; nonce: number } | undefined>(undefined);
+    const [jump, setJump] = useState<{ artifact: string; target: string; refs: string[]; task?: string; nonce: number } | undefined>(undefined);
 
     const jumps = useRef(0);
 
@@ -1128,6 +1155,27 @@ export function useRunState(props: SddViewProps) {
 
         setSelectedName(stage.name);
         setJump({ artifact: stage.artifact, target: stage.name, refs, nonce: jumps.current });
+    };
+
+    /**
+     * Following a task id in a mark on the requirements page: the panel
+     * moves to the plan and flashes that task's row. A plan that is not
+     * one of this spec's phases opens as a file tab instead.
+     */
+    const followTask = (id: string) => {
+
+        if (!planArtifact)
+            return;
+
+        const stage = specStages.find(one => samePath(one.artifact, planArtifact));
+
+        if (!stage?.artifact)
+            return openFile(planArtifact);
+
+        jumps.current += 1;
+
+        setSelectedName(stage.name);
+        setJump({ artifact: stage.artifact, target: stage.name, refs: [], task: id, nonce: jumps.current });
     };
 
     /**
@@ -1191,8 +1239,16 @@ export function useRunState(props: SddViewProps) {
 
         const frame = requestAnimationFrame(() => {
 
-            const landings = jump.refs
-                .map(ref => document.getElementById(anchorId(jump.target, ref)))
+            // A task lands on its row, found by id in the plan as it is
+            // drawn - the same rows the ▶ controls sit on. A citation
+            // lands on the anchors it named.
+            const row = jump.task === undefined
+                ? undefined
+                : allTasks(inlineRows).find(task => task.id === jump.task);
+
+            const landings = (jump.task !== undefined
+                ? [row ? bodyRef.current?.querySelector<HTMLElement>(`[data-line="${row.line}"]`) ?? null : null]
+                : jump.refs.map(ref => document.getElementById(anchorId(jump.target, ref))))
                 .filter((element): element is HTMLElement => element !== null);
 
             // Nothing to land on - clear the jump rather than leaving it
@@ -1204,7 +1260,11 @@ export function useRunState(props: SddViewProps) {
                 return;
             }
 
-            landings[0].scrollIntoView({ block: "center", behavior: gentle ? "auto" : "smooth" });
+            // A task row lands at the top of the pane, as the outline's
+            // does: a group row holds every row under it and can be
+            // taller than the pane, so centred, its title would sit
+            // above the fold.
+            landings[0].scrollIntoView({ block: jump.task !== undefined ? "start" : "center", behavior: gentle ? "auto" : "smooth" });
 
             const lines = landings
                 .map(landing => Number(landing.closest<HTMLElement>("[data-line]")?.dataset.line))
@@ -1349,10 +1409,10 @@ export function useRunState(props: SddViewProps) {
         setPromptEditing, promptClosing, setPromptClosing, promptEditorRef, promptBodyRef,
         promptDraft, promptDirty, settled, meta, body, offset, bodyRef, scrollTops, flashTimer,
         cited, unread, prefixByArtifact, previewsByArtifact, knownByArtifact, lineAnchors, fileLines,
-        gutterChars, readingRef, baselineBody, blockChanges, planArtifact, inlinePlan, inlineRows,
+        gutterChars, readingRef, baselineBody, blockChanges, planArtifact, inlinePlan, inlineRows, citingTasks,
         outline, docScroll, docHere, docSection, docChain, outlineBodyRef, anchored, notesHere,
         orphans, openNotes, marginLeft, marginRoom, notesInline, marginRef,
-        changedBlocks, jump, setJump, jumps, followCitation, flashing
+        changedBlocks, jump, setJump, jumps, followCitation, followTask, flashing
     } as const;
 }
 

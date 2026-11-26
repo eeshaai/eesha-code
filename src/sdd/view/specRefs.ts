@@ -252,6 +252,15 @@ const ID_LEADS = /^(?:[-*+]\s+|\d+[.)]\s+|\|\s*)?(?:\*\*|__)?([A-Za-z][\w.-]*\d[
  */
 export interface RequirementPreview extends RequirementAnchor {
 
+    /**
+     * What the id is: a `### Requirement 3` heading, one of its numbered
+     * acceptance criteria, or an id the document declares some other way
+     * (`### G11: ...`, `- **FR-1**: ...`). The requirements page marks
+     * the first two with the tasks that cite them; it leaves the third
+     * alone.
+     */
+    kind: "requirement" | "criterion" | "declared";
+
     /** `Requirement 3: Retry on timeout` - the heading this sits under, markdown stripped. */
     heading: string;
 
@@ -330,6 +339,7 @@ export function requirementPreviews(content: string | undefined, prefix?: string
             previews.push({
                 id: requirement,
                 line: index + 1,
+                kind: "requirement",
                 heading,
 
                 // The paragraph under the heading - the user story,
@@ -363,6 +373,7 @@ export function requirementPreviews(content: string | undefined, prefix?: string
             previews.push({
                 id: declared[1].replace(/\s+/g, " "),
                 line: index + 1,
+                kind: "declared",
                 heading,
                 text: blockAt(lines, next(lines, index + 1))
             });
@@ -392,6 +403,7 @@ export function requirementPreviews(content: string | undefined, prefix?: string
             previews.push({
                 id: leads[1],
                 line: index + 1,
+                kind: "declared",
                 heading,
                 text: rowOrBlock(lines, index)
             });
@@ -405,6 +417,7 @@ export function requirementPreviews(content: string | undefined, prefix?: string
             previews.push({
                 id: `${requirement}.${criterion[1]}`,
                 line: index + 1,
+                kind: "criterion",
                 heading,
                 text: blockAt(lines, index)
             });

@@ -151,6 +151,49 @@
     }
 }
 
+// After a requirement or a criterion, on the requirements page: the tasks
+// that cite it. Small and muted, so it does not compete with the
+// criterion's own words; "No task" in the warning colour, because that
+// is the one worth stopping for. Drawn on the page only, never in the
+// file, and left out of a text selection so a copied criterion stays
+// as written.
+.sdd-task-mark {
+
+    display: inline-block;
+    margin-left: var(--spacing-sm);
+    padding: 0 0.4em;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: 400;
+    font-style: normal;
+    line-height: 1.5;
+    white-space: nowrap;
+    color: var(--color-fg-muted);
+    background: color-mix(in srgb, var(--color-fg-muted) 12%, transparent);
+    user-select: none;
+
+    // A task id: pressed, it opens the plan at that task's row. Link
+    // coloured, so it reads as something to press inside the muted mark.
+    &__id {
+        font: inherit;
+        border: none;
+        padding: 0;
+        background: none;
+        color: var(--color-link);
+        cursor: pointer;
+        font-variant-numeric: tabular-nums;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+
+    &--none {
+        color: var(--color-warning);
+        background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    }
+}
+
 // The card a rested pointer opens on a reference.
 //
 // A citation is read in the middle of a sentence about something else -

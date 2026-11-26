@@ -53,12 +53,50 @@ export function useDocParts(ctx: RunState & ImplementState & DocEditing) {
         boundary, gateApproves, blockedWork, toggleTask, handed, tillFace, askTill, outOfOrder,
         blockProps, savePrompt, discardPrompt, promptOutline, promptSection, promptOutlineBodyRef,
         goToPromptLine, discardDraft, goToLine, addNote, noteContents, citation, legacyCitation,
-        planRow
+        planRow, citingTasks, followTask
     } = ctx;
 
-    const renderers = useRef({ blockProps, citation, legacyCitation, planRow });
+    /**
+     * After a requirement or a criterion: the tasks that cite it - "Tasks
+     * 1.2, 3.1" - or "No task" in the warning colour. Only the document
+     * the plan cites has any.
+     *
+     * Each task id is its own button, which opens the plan at that
+     * task's row. Pressed through the ref, so a press always uses this
+     * render's plan, not the one the memoized document was drawn with.
+     */
+    const taskMark = (node: { position?: { start: { line: number } } } | undefined): React.ReactNode => {
 
-    renderers.current = { blockProps, citation, legacyCitation, planRow };
+        const tasks = node?.position ? citingTasks.get(node.position.start.line) : undefined;
+
+        if (!tasks)
+            return null;
+
+        if (!tasks.length)
+            return <span className="sdd-task-mark sdd-task-mark--none">No task</span>;
+
+        return (
+            <span className="sdd-task-mark">
+                {tasks.length === 1 ? "Task" : "Tasks"}{" "}
+                {tasks.map((id, index) => (
+                    <React.Fragment key={id}>
+                        {index > 0 && ", "}
+                        <button
+                            type="button"
+                            className="sdd-task-mark__id"
+                            title={`Open task ${id} in the plan`}
+                            onClick={() => renderers.current.followTask(id)}>
+                            {id}
+                        </button>
+                    </React.Fragment>
+                ))}
+            </span>
+        );
+    };
+
+    const renderers = useRef({ blockProps, citation, legacyCitation, planRow, taskMark, followTask });
+
+    renderers.current = { blockProps, citation, legacyCitation, planRow, taskMark, followTask };
 
     /**
      * Everything the renderers above read through the ref, as one
@@ -84,7 +122,8 @@ export function useDocParts(ctx: RunState & ImplementState & DocEditing) {
         queuedTasks.join(","),
         (runningCommands ?? []).join("\n"),
         [...doneIds].join(","),
-        chats.map(chat => `${chat.sessionId}:${chat.ended ? 1 : 0}`).join(",")
+        chats.map(chat => `${chat.sessionId}:${chat.ended ? 1 : 0}`).join(","),
+        [...citingTasks].map(([line, tasks]) => `${line}:${tasks.join(",")}`).join(";")
     ].join("|");
 
     /**
@@ -113,11 +152,13 @@ export function useDocParts(ctx: RunState & ImplementState & DocEditing) {
 
         /* Headings and list items carry the anchors a reference lands on -
            `### Requirement 2` and each of its numbered criteria. An element
-           with no anchor on its line renders as plain markdown. */
+           with no anchor on its line renders as plain markdown. A
+           requirement heading (H2 to H4) and a criterion also end with
+           the tasks that cite them. */
         h1: ({ children, node }) => <h1 {...renderers.current.blockProps(node)}>{children}</h1>,
-        h2: ({ children, node }) => <h2 {...renderers.current.blockProps(node)}>{children}</h2>,
-        h3: ({ children, node }) => <h3 {...renderers.current.blockProps(node)}>{children}</h3>,
-        h4: ({ children, node }) => <h4 {...renderers.current.blockProps(node)}>{children}</h4>,
+        h2: ({ children, node }) => <h2 {...renderers.current.blockProps(node)}>{children}{renderers.current.taskMark(node)}</h2>,
+        h3: ({ children, node }) => <h3 {...renderers.current.blockProps(node)}>{children}{renderers.current.taskMark(node)}</h3>,
+        h4: ({ children, node }) => <h4 {...renderers.current.blockProps(node)}>{children}{renderers.current.taskMark(node)}</h4>,
         h5: ({ children, node }) => <h5 {...renderers.current.blockProps(node)}>{children}</h5>,
         h6: ({ children, node }) => <h6 {...renderers.current.blockProps(node)}>{children}</h6>,
         /* A plan's checkbox row carries its own controls - a live box and
@@ -138,6 +179,7 @@ export function useDocParts(ctx: RunState & ImplementState & DocEditing) {
                 <li {...props} className={classes || undefined}>
                     {controls}
                     {highlightEars(children)}
+                    {renderers.current.taskMark(node)}
                 </li>
             );
         },
