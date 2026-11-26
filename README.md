@@ -41,7 +41,7 @@ Run `eesha doctor` to see which of these programs are on your machine, and how t
 3. `eesha open` - opens the page.
 4. `eesha stop` - stops it. A turn still running is stopped.
 5. `eesha run` - runs it in this terminal instead, logging there too. Ctrl+C stops it.
-6. `eesha doctor` - says which runtimes' programs are on this machine (see section 2).
+6. `eesha doctor` - says which runtimes' programs are on this machine (see section 2), and whether `rg` is on PATH for the "@" file search.
 7. `eesha connect ado` or `eesha connect github` - connects a connector from the terminal (see 3.6). It signs you in through `az` or `gh` first if needed. If nothing is saved for that connector yet, it puts in reach what this folder's git remotes point to, with every source on Read.
 8. `eesha --version` - prints the version.
 
@@ -213,7 +213,7 @@ SDD (spec-driven development) always runs in a workspace. It is always on: there
 
 When a turn ends, or the agent asks you something, the page shows a desktop notification, even while you are looking at the session. The tab's title also gets "(Done)", "(Failed)" or "(Question)" in front until you click, type, or come back to the tab. Clicking the notification opens that session. The browser asks once whether the page may show notices, the first time you send a message. If you said no, only the title changes; allow it again in the browser's site settings for `127.0.0.1:7420`. A turn you stopped yourself gets no notice.
 
-In the compose box, "/" is for commands, "@" is for files and "#" is for tools and MCP servers. Type "@" and part of a name to search the session's folders; a picked file becomes a chip and goes with the message. With the `steering` flag on in settings.json, type "@" and the name of a `manual` steering file (the file name without `.md`) and that file goes with that one message.
+In the compose box, "/" is for commands, "@" is for files and "#" is for tools and MCP servers. Type "@" and part of a name to search the session's folders; a picked file becomes a chip and goes with the message. When [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) is on PATH, the search uses it and leaves out the files `.gitignore` leaves out. Without it, the search still works and skips only build folders like `node_modules`, `dist` and `bin`. With the `steering` flag on in settings.json, type "@" and the name of a `manual` steering file (the file name without `.md`) and that file goes with that one message.
 
 Type "/" as the very first character of a message to see the runtime's own slash commands. Picking one writes "/name " into the box; type what follows and send it. A "/" anywhere else is plain text. The list is never fetched: each runtime sends it when a session starts, and it is kept in `commands/<runtime>.json`, so a new session shows the last list at once. A runtime you have not started a session with yet shows no commands. Copilot through the SDK (`ghcp`) has no list. Commands that would let the agent run tools without asking, or reach other folders (for example `/permissions` or `/add-dir`), are left out of the list and refused if you type them. So are Copilot's `/share` (and `/export`), which can publish the session as a GitHub gist, and `/remote`, which lets the session be used from GitHub.com and GitHub Mobile.
 

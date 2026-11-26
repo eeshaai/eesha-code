@@ -95,6 +95,16 @@ describe("what it prints", () => {
         expect(text).not.toContain("the ones found");
     });
 
+    it("says where rg is, or how to install it", () => {
+
+        expect(doctorReport({ checks, listed: false, ripgrep: "C:\\bin\\rg.exe" })).toContain("rg found at C:\\bin\\rg.exe.");
+
+        const missing = doctorReport({ checks, listed: false });
+
+        expect(missing).toContain("rg not found.");
+        expect(missing).toContain("winget install BurntSushi.ripgrep.MSVC");
+    });
+
     it("says the settings problem instead of a list", () => {
 
         expect(doctorReport({ checks: [], listed: false, problem: "settings.json could not be read: bad JSON" })).toBe("settings.json could not be read: bad JSON");

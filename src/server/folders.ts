@@ -1,13 +1,17 @@
+import { type ChildProcess, spawn } from "child_process";
 import * as fs from "fs";
 import * as fsp from "fs/promises";
 import * as path from "path";
 
+import { commandOnPath } from "../core/agent/providers/cliOnPath";
+import { EnvService } from "../core/env/envService";
 import type { FileMatch } from "../shared/composeFiles";
 import type { FileItem, FolderEntry, FolderListing } from "./protocol";
 import { sameFolder } from "./settings";
 
 /*
- * The folder browser and the "@" file search, done with Node.
+ * The folder browser and the "@" file search, done with Node. The "@"
+ * search asks rg for the file list instead when rg is on PATH.
  */
 
 /** When a folder's `.git` last changed, in ms. Nothing: the folder is not a git repo. */
@@ -206,13 +210,29 @@ export async function listFiles(folder: string): Promise<FileItem[]> {
 }
 
 /** Folders the "@" search never looks in. */
-const SKIPPED = new Set(["node_modules", ".git", "dist", "out", "bin", "obj", ".vs", ".next", "coverage"]);
+const SKIPPED = new Set(["node_modules", ".git", "dist", "out", "bin", "obj", ".vs", ".next", "coverage", "target", ".venv", "__pycache__"]);
 
 /** How many matches the "@" search lists. */
 const MATCH_LIMIT = 30;
 
 /** How many files one search looks at before it stops, so a huge folder never hangs the page. */
 const VISIT_LIMIT = 50_000;
+
+/**
+ * What rg is asked for: every file, hidden ones too, in path order, with
+ * `/` between folders, and none in the folders above. The person's own rg
+ * config file is not read, so it cannot change the output.
+ */
+const RG_ARGS = [
+    "--no-config", "--files", "--hidden", "--sort", "path", "--path-separator", "/",
+    ...[...SKIPPED].flatMap(name => ["--glob", `!${name}`])
+];
+
+/** Where rg is on PATH, or nothing. */
+export function findRipgrep(): string | undefined {
+
+    return commandOnPath(EnvService.machine(), "rg");
+}
 
 /**
  * Files whose path holds `query`, for the compose box's "@" search, over
@@ -222,8 +242,12 @@ const VISIT_LIMIT = 50_000;
  * A match in the working folder (the first) is given relative to it,
  * which is how the chat resolves a picked file. A match in another
  * folder is given as a full path, which resolves the same.
+ *
+ * With `rg` (found on PATH unless given; `null` for none), rg lists each
+ * folder, so files a `.gitignore` leaves out are left out here too. A
+ * folder rg cannot list is listed with Node.
  */
-export async function searchFolders(folders: readonly string[], query: string): Promise<FileMatch[]> {
+export async function searchFolders(folders: readonly string[], query: string, rg: string | null = findRipgrep() ?? null): Promise<FileMatch[]> {
 
     const needle = query.replace(/[^\w.\-/ ]/g, "").trim().toLowerCase().replace(/\\/g, "/");
 
@@ -233,59 +257,146 @@ export async function searchFolders(folders: readonly string[], query: string): 
 
     let visited = 0;
 
-    const walk = async (folder: string): Promise<void> => {
+    const enough = (): boolean => visited >= VISIT_LIMIT || found.length >= MATCH_LIMIT * 4;
 
-        if (visited >= VISIT_LIMIT || found.length >= MATCH_LIMIT * 4)
-            return;
+    // One file seen. False once the search has seen enough.
+    const take = (full: string): boolean => {
 
-        let entries: fs.Dirent[];
+        visited++;
 
-        try {
+        const shown = root && isInside(root, full)
+            ? path.relative(root, full).split(path.sep).join("/")
+            : full.split(path.sep).join("/");
 
-            entries = await fsp.readdir(folder, { withFileTypes: true });
+        if (!needle || shown.toLowerCase().includes(needle))
+            found.push({ name: path.basename(full), path: shown });
 
-        } catch {
-
-            return;
-        }
-
-        for (const entry of entries) {
-
-            if (visited >= VISIT_LIMIT || found.length >= MATCH_LIMIT * 4)
-                return;
-
-            const full = path.join(folder, entry.name);
-
-            if (entry.isDirectory()) {
-
-                if (!SKIPPED.has(entry.name))
-                    await walk(full);
-
-                continue;
-            }
-
-            if (!entry.isFile())
-                continue;
-
-            visited++;
-
-            const shown = root && isInside(root, full)
-                ? path.relative(root, full).split(path.sep).join("/")
-                : full.split(path.sep).join("/");
-
-            if (!needle || shown.toLowerCase().includes(needle))
-                found.push({ name: entry.name, path: shown });
-        }
+        return !enough();
     };
 
-    for (const folder of folders)
-        await walk(folder);
+    for (const folder of folders) {
+
+        if (enough())
+            break;
+
+        if (!rg || !await listWithRg(rg, folder, take))
+            await listWithNode(folder, take);
+    }
 
     const byName = (one: FileMatch) => (needle && one.name.toLowerCase().includes(needle) ? 0 : 1);
 
     return found
         .sort((a, b) => byName(a) - byName(b) || a.path.localeCompare(b.path))
         .slice(0, MATCH_LIMIT);
+}
+
+/**
+ * Gives each file in `folder` to `take`, with rg, until `take` says stop.
+ * False when rg gave no file and could not start or ended with an error:
+ * the caller then lists the folder with Node. rg ends with 1 when the
+ * folder has no files - not an error.
+ */
+function listWithRg(rg: string, folder: string, take: (full: string) => boolean): Promise<boolean> {
+
+    return new Promise(resolve => {
+
+        let child: ChildProcess;
+
+        try {
+
+            child = spawn(rg, RG_ARGS, { cwd: folder, stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+
+        } catch {
+
+            // An rg.cmd or rg.bat, which Node does not start without a shell.
+            resolve(false);
+
+            return;
+        }
+
+        let gave = false;
+        let done = false;
+        let rest = "";
+
+        const finish = (ok: boolean): void => {
+
+            if (!done) {
+
+                done = true;
+                resolve(ok);
+            }
+        };
+
+        const one = (line: string): void => {
+
+            const file = line.replace(/\r$/, "");
+
+            if (done || !file)
+                return;
+
+            gave = true;
+
+            if (!take(path.join(folder, file))) {
+
+                child.kill();
+                finish(true);
+            }
+        };
+
+        child.stdout!.setEncoding("utf8");
+
+        child.stdout!.on("data", (chunk: string) => {
+
+            const lines = (rest + chunk).split("\n");
+
+            rest = lines.pop() ?? "";
+
+            for (const line of lines)
+                one(line);
+        });
+
+        // Not started (`error`) or ended (`close`): the first one settles it.
+        child.on("error", () => finish(gave));
+
+        child.on("close", code => {
+
+            one(rest);
+            finish(gave || code === 0 || code === 1);
+        });
+    });
+}
+
+/** Gives each file in `folder` to `take`, with Node, skipping the SKIPPED folders. False once `take` said stop. */
+async function listWithNode(folder: string, take: (full: string) => boolean): Promise<boolean> {
+
+    let entries: fs.Dirent[];
+
+    try {
+
+        entries = await fsp.readdir(folder, { withFileTypes: true });
+
+    } catch {
+
+        return true;
+    }
+
+    for (const entry of entries) {
+
+        const full = path.join(folder, entry.name);
+
+        if (entry.isDirectory()) {
+
+            if (!SKIPPED.has(entry.name) && !await listWithNode(full, take))
+                return false;
+
+            continue;
+        }
+
+        if (entry.isFile() && !take(full))
+            return false;
+    }
+
+    return true;
 }
 
 /** Whether `file` is `folder` or inside it. */

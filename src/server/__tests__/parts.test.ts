@@ -9,7 +9,7 @@ import * as path from "path";
 import { describe, expect, it } from "vitest";
 
 import { FileStore } from "../fileStore";
-import { gitReposIn, isInside, listFolders, searchFolders, workingFoldersHere } from "../folders";
+import { findRipgrep, gitReposIn, isInside, listFolders, searchFolders, workingFoldersHere } from "../folders";
 import { eeshaHome, eeshaPath } from "../paths";
 import { cookieKey, ensureKey, hostAllowed, isKey, keyCookie, originAllowed, sameSite } from "../security";
 import { checkFolders, isChatId, readSession, recentFolders, rememberFolders, removeSession, sessionIds, writeSession } from "../sessions";
@@ -416,11 +416,60 @@ describe("the \"/\" file search", () => {
         fs.writeFileSync(path.join(work, "node_modules", "pkg", "app.ts"), "");
         fs.writeFileSync(path.join(other, "app.md"), "");
 
-        const found = await searchFolders([work, other], "app");
+        const found = await searchFolders([work, other], "app", null);
 
         expect(found).toContainEqual({ name: "app.ts", path: "src/app.ts" });
         expect(found).toContainEqual({ name: "app.md", path: path.join(other, "app.md").split(path.sep).join("/") });
         expect(found.some(match => match.path.includes("node_modules"))).toBe(false);
+    });
+
+    it("skips build folders: target, .venv and __pycache__", async () => {
+
+        const work = temporaryFolder();
+
+        for (const folder of ["target", ".venv", "__pycache__", "src"]) {
+
+            fs.mkdirSync(path.join(work, folder));
+            fs.writeFileSync(path.join(work, folder, "app.py"), "");
+        }
+
+        expect(await searchFolders([work], "app", null)).toEqual([{ name: "app.py", path: "src/app.py" }]);
+    });
+
+    it("lists a folder with Node when rg cannot start", async () => {
+
+        const work = temporaryFolder();
+
+        fs.writeFileSync(path.join(work, "app.ts"), "");
+
+        expect(await searchFolders([work], "app", path.join(work, "no-such-rg.exe"))).toEqual([{ name: "app.ts", path: "app.ts" }]);
+    });
+
+    // Runs only where rg is on PATH.
+    it.skipIf(!findRipgrep())("with rg, leaves out what .gitignore leaves out, keeps hidden files, and gives other folders in full", async () => {
+
+        const work = temporaryFolder();
+        const other = temporaryFolder();
+
+        // rg reads .gitignore only in a git repo.
+        fs.mkdirSync(path.join(work, ".git"));
+        fs.writeFileSync(path.join(work, ".gitignore"), "generated/\n");
+
+        for (const folder of ["src", "generated", ".github", "node_modules"]) {
+
+            fs.mkdirSync(path.join(work, folder));
+            fs.writeFileSync(path.join(work, folder, "app.ts"), "");
+        }
+
+        fs.writeFileSync(path.join(other, "app.md"), "");
+
+        const found = await searchFolders([work, other], "app", findRipgrep()!);
+
+        expect(found).toEqual([
+            { name: "app.ts", path: ".github/app.ts" },
+            { name: "app.md", path: path.join(other, "app.md").split(path.sep).join("/") },
+            { name: "app.ts", path: "src/app.ts" }
+        ].sort((a, b) => a.path.localeCompare(b.path)));
     });
 
     it("knows when a file is inside a folder", () => {

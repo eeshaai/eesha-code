@@ -101,12 +101,30 @@ function programAt(command: string, env: Record<string, string>): string | undef
     return commandOnPath(env, command);
 }
 
+/** What `eesha doctor` found on this machine. */
+export interface MachineCheck {
+
+    checks: RuntimeCheck[];
+
+    /** settings.json names the runtimes (`ai.providers`). */
+    listed: boolean;
+
+    /** Where rg is - the "@" file search uses it. Nothing when it is not on PATH. */
+    ripgrep?: string;
+
+    /** Why settings.json could not be read. */
+    problem?: string;
+}
+
+/** How to get rg - said when it is not found. */
+const RG_INSTALL = "winget install BurntSushi.ripgrep.MSVC on Windows, brew install ripgrep on macOS, apt install ripgrep on Linux";
+
 /**
  * The runtimes checked: `ai.providers` when settings.json lists them,
  * else every runtime Eesha Code knows - the picker then offers only the
- * ones found (see `foundOnly`).
+ * ones found (see `foundOnly`). And whether rg is on PATH.
  */
-export async function checkThisMachine(): Promise<{ checks: RuntimeCheck[]; listed: boolean; problem?: string }> {
+export async function checkThisMachine(): Promise<MachineCheck> {
 
     useProfileDirectory(eeshaHome());
 
@@ -122,7 +140,9 @@ export async function checkThisMachine(): Promise<{ checks: RuntimeCheck[]; list
             ? [...settings.ai.providers]
             : [...Providers, ...Object.keys(settings.ai.acpAgents).filter(id => !(Providers as readonly string[]).includes(id))];
 
-        return { checks: checkRuntimes(ids, settings.ai.acpAgents, env), listed };
+        const ripgrep = commandOnPath(env, "rg");
+
+        return { checks: checkRuntimes(ids, settings.ai.acpAgents, env), listed, ...(ripgrep ? { ripgrep } : {}) };
 
     } catch (error) {
 
@@ -131,7 +151,7 @@ export async function checkThisMachine(): Promise<{ checks: RuntimeCheck[]; list
 }
 
 /** What `eesha doctor` prints. */
-export function doctorReport(result: { checks: RuntimeCheck[]; listed: boolean; problem?: string }): string {
+export function doctorReport(result: MachineCheck): string {
 
     if (result.problem)
         return result.problem;
@@ -154,6 +174,11 @@ export function doctorReport(result: { checks: RuntimeCheck[]; listed: boolean; 
     const found = checks.filter(check => check.found);
 
     lines.push(`${found.length} of ${checks.length} found. Sign-in is not checked: each runtime uses the sign-in its own program has.`);
+
+    // Not needed to run: without rg the "@" search lists files with Node.
+    lines.push("", result.ripgrep
+        ? `rg found at ${result.ripgrep}. The "@" file search uses it and leaves out the files .gitignore leaves out.`
+        : `rg not found. The "@" file search works without it, but may then show files .gitignore leaves out. To add it: ${RG_INSTALL}.`);
 
     return lines.join("\n");
 }
