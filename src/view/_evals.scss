@@ -364,15 +364,6 @@
     font-size: var(--font-size-sm);
 }
 
-.evals__column-lock {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--color-fg-muted);
-    font-size: var(--font-size-sm);
-}
-
 .evals__state {
     margin-left: auto;
     flex: 0 0 auto;

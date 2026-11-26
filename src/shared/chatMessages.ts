@@ -114,13 +114,6 @@ export type ToChatHost =
     /** A message from the compose box. */
     | { type: "send"; text: string; files?: SentFile[]; tools?: SentToolSelection }
 
-    /**
-     * An evaluation's variant, before its message: the compose box's text
-     * is saved as the variant's own text, added under the common message
-     * when Send to all is pressed. Nothing is sent to the agent.
-     */
-    | { type: "variantText"; text: string }
-
     | { type: "answer"; askId: string; answer: string }
     | { type: "cancel" }
     | { type: "newChat" }

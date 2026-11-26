@@ -60,6 +60,56 @@ describe("FakeProvider", () => {
         expect(session.status).toBe("idle");
     });
 
+    it("works slowly for a 'fake slow' message until it is stopped, and then says nothing more", async () => {
+
+        // A real step, so the turn is still working when it is stopped.
+        const session = await new FakeProvider(20).createSession({ workingDirectory: dir, env: {} });
+        const events: AgentEvent[] = [];
+
+        session.on(event => events.push(event));
+
+        const turn = session.sendAndWait({ prompt: "Please fake slow." });
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        expect(session.status).toBe("working");
+
+        await session.abort();
+        await turn;
+
+        // Its first line only: no answer, and no idle - the turn was stopped.
+        expect(events.map(event => event.kind)).toEqual(["message"]);
+    });
+
+    it("stops a turn when the signal it was made with is aborted, as Stop does in the app", async () => {
+
+        const stop = new AbortController();
+        const session = await new FakeProvider(20).createSession({ workingDirectory: dir, env: {}, signal: stop.signal });
+        const events: AgentEvent[] = [];
+
+        session.on(event => events.push(event));
+
+        const turn = session.sendAndWait({ prompt: "fake slow" });
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        stop.abort();
+        await turn;
+
+        expect(events.map(event => event.kind)).toEqual(["message"]);
+        expect(session.status).toBe("idle");
+    });
+
+    it("answers a 'fake slow' message once its steps are done", async () => {
+
+        const { session, events } = await open();
+
+        await session.sendAndWait({ prompt: "fake slow" });
+
+        expect(events.some(event => event.kind === "message" && event.text === "Fake answer, after working slowly.")).toBe(true);
+        expect(events.at(-1)?.kind).toBe("idle");
+    });
+
     it("writes the file again on a revise, with a revision line", async () => {
 
         const { session } = await open({ target: "design.md" });

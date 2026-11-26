@@ -6,7 +6,7 @@ import * as path from "path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { builtInTasks, evalTasks, evalTasksDir, findingInFolder, parseFindings, parseTaskFile, taskMessage } from "../evalTasks";
+import { builtInTasks, evalTasks, evalTasksDir, findingInFolder, parseFindings, parseTaskFile, taskClosing } from "../evalTasks";
 import { findingRows } from "../../web/evalNumbers";
 
 afterEach(() => fs.rmSync(evalTasksDir(), { recursive: true, force: true }));
@@ -81,22 +81,21 @@ describe("a person's own task file", () => {
 
 describe("what is sent for a task", () => {
 
-    it("adds the closing lines to a find and a fix task, and nothing to a plain one", () => {
+    it("gives a find and a fix task closing lines, and a plain one none", () => {
 
-        const find = taskMessage("Look for X.  ", "find");
+        const find = taskClosing("find");
 
-        expect(find.startsWith("Look for X.\n\n")).toBe(true);
-        expect(find).toContain("Do not change, create or delete any file");
+        expect(find.startsWith("Do not change, create or delete any file")).toBe(true);
         expect(find).toContain("```findings");
         expect(find).toContain("file | line | severity | problem");
 
-        const fix = taskMessage("Look for X.", "fix");
+        const fix = taskClosing("fix");
 
         expect(fix).toContain("Fix each problem you find");
         expect(fix).not.toContain("Do not change, create or delete any file");
         expect(fix).toContain("```findings");
 
-        expect(taskMessage("Do Y.", undefined)).toBe("Do Y.");
+        expect(taskClosing(undefined)).toBe("");
     });
 });
 

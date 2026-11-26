@@ -8,7 +8,7 @@ import * as path from "path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { dropStart, evalCopyDir, evalDir, evalNames, evalOfChat, isEvalName, makeCopy, readEval, saveStart, writeEval } from "../evals";
+import { dropStart, evalCopyDir, evalDir, evalNames, evalOfChat, isEvalName, makeCopy, readEval, saveStart, variantMessage, writeEval } from "../evals";
 import { eeshaPath } from "../paths";
 
 /*
@@ -98,6 +98,27 @@ describe("what an evaluation saves", () => {
         fs.copyFileSync(path.join(evalDir("one"), "eval.json"), path.join(evalDir("copy"), "eval.json"));
 
         expect(readEval("copy")).toBeUndefined();
+    });
+
+    it("reads an older evaluation's text that went in place of the common message as the variant's own text, under it", () => {
+
+        const folder = temporaryFolder();
+
+        fs.mkdirSync(evalDir("one"), { recursive: true });
+        fs.writeFileSync(path.join(evalDir("one"), "eval.json"), JSON.stringify({
+            name: "one", folder, createdAt: 5,
+            variants: [
+                { ...variant("one-1", "chat-a"), own: "Do it your way.", extra: "Be short." },
+                { ...variant("one-2", "chat-b"), own: "Only this." }
+            ]
+        }));
+
+        const [first, second] = readEval("one")!.variants;
+
+        expect(first).toEqual({ ...variant("one-1", "chat-a"), extra: "Do it your way.\n\nBe short." });
+        expect(second).toEqual({ ...variant("one-2", "chat-b"), extra: "Only this." });
+
+        expect(variantMessage("Fix the login bug.", second!)).toBe("Fix the login bug.\n\nOnly this.");
     });
 
     it("lists the evaluations newest first, and finds the one a session belongs to", () => {

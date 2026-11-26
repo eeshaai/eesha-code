@@ -13,7 +13,7 @@ import { createJail } from "../../core/agent/providers/pathJail";
 import type { ChatController } from "../../chat/ChatController";
 import { Connectors } from "../connectors/Connectors";
 import { EvalChatHost } from "../EvalChatHost";
-import { evalDir, evalScratchDir, type EvalVariant, readEval, writeEval } from "../evals";
+import { evalDir, evalScratchDir, type EvalVariant } from "../evals";
 import { FileStore } from "../fileStore";
 
 import { Memory } from "../memory/Memory";
@@ -56,6 +56,7 @@ function setUp(memoryChoices: MemoryChoices = MEMORY_OFF) {
         chatChanged: () => undefined,
         renamed: () => undefined,
         chatDeleted: () => undefined,
+        toWorkspacePage: () => undefined,
         keepFolder: async () => undefined,
         notify: (_chat, notice) => { notified.push(notice); },
         phaseOwner: () => undefined,
@@ -197,77 +198,5 @@ describe("a variant and the memory", () => {
         const { host } = setUp(MEMORY_ON);
 
         expect(host.ownMemory()).toBe(true);
-    });
-});
-
-describe("a variant's own text, typed at the foot of its column", () => {
-
-    it("is saved, never sent, put back in the box, and locked once the variant got its message", async () => {
-
-        const { host, chat, source, copy, evalsChanged, sent } = setUp();
-
-        writeEval({ name: "one", folder: source, createdAt: 1, variants: [{ name: "one-1", chatId: "variant-chat", provider: "claude", folder: copy, addedAt: 1 }] });
-
-        try {
-
-            // Saved trimmed; the box gets it back, and the column is told.
-            expect(await host.variantText("  Use a map.  ")).toBe("Use a map.");
-            expect(readEval("one")!.variants[0]!.extra).toBe("Use a map.");
-            expect(host.variantDraft()).toBe("Use a map.");
-            expect(evalsChanged).toEqual(["one"]);
-            expect(sent.at(-1)).toMatchObject({ type: "eesha.note", text: expect.stringContaining("Send to all") });
-
-            // Empty clears it.
-            expect(await host.variantText("   ")).toBe("");
-            expect(readEval("one")!.variants[0]!.extra).toBeUndefined();
-
-            // Once its message is on its way nothing changes, and the box keeps what was typed.
-            (chat as unknown as { working: boolean }).working = true;
-
-            expect(await host.variantText("Too late.")).toBe("Too late.");
-            expect(readEval("one")!.variants[0]!.extra).toBeUndefined();
-            expect(sent.at(-1)).toMatchObject({ type: "eesha.note", text: expect.stringContaining("one message") });
-
-        } finally {
-
-            fs.rmSync(evalDir("one"), { recursive: true, force: true });
-        }
-    });
-});
-
-describe("a variant's setup picked at the foot of its column", () => {
-
-    it("is saved to the evaluation's own file, and the variant's memory follows its new runtime", async () => {
-
-        const { host, source, copy, evalsChanged } = setUp({ access: "write", askOnSave: false, claudeMemoryOff: false });
-        const variant: EvalVariant = { name: "one-1", chatId: "variant-chat", provider: "claude", model: "opus", effort: "high", extra: "Be short.", folder: copy, addedAt: 1 };
-
-        writeEval({ name: "one", folder: source, createdAt: 1, variants: [variant, { ...variant, name: "one-2", chatId: "other-chat" }] });
-
-        try {
-
-            // On Claude with Claude's own memory on, it has none of ours.
-            expect(host.ownMemory()).toBe(false);
-
-            await host.picked({ provider: "kiro-cli-v3", mode: "spec" });
-
-            const saved = readEval("one")!;
-
-            // The model and effort belonged to the old runtime; the name, the copy and the extra text stay.
-            expect(saved.variants[0]).toEqual({ name: "one-1", chatId: "variant-chat", provider: "kiro-cli-v3", mode: "spec", extra: "Be short.", folder: copy, addedAt: 1 });
-            expect(saved.variants[1]).toMatchObject({ name: "one-2", provider: "claude", model: "opus" });
-
-            expect(host.ownMemory()).toBe(true);
-            expect(evalsChanged).toEqual(["one"]);
-
-            // No pick: nothing changes.
-            await host.picked(undefined);
-
-            expect(readEval("one")!.variants[0]!.provider).toBe("kiro-cli-v3");
-
-        } finally {
-
-            fs.rmSync(evalDir("one"), { recursive: true, force: true });
-        }
     });
 });

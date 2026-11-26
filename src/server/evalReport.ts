@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 
+import { TURN_FAILED, TURN_STOPPED } from "../chat/chatHost";
 import { changedBetween, snapshot } from "../chat/turnSnapshot";
 import { addSpend } from "../core/models/run";
 import { parseEvents, type RunEvent } from "../core/events/runEvents";
@@ -144,6 +145,7 @@ function turnReport(turn: Turn, running: boolean, now: number): EvalTurnReport {
     const models = new Set<string>();
     let cost: EvalTurnReport["cost"] = [];
     let error = false;
+    let ended: EvalTurnReport["ended"];
 
     const add = (sum: number | undefined, value: number | undefined) => typeof value === "number" ? (sum ?? 0) + value : sum;
 
@@ -201,6 +203,18 @@ function turnReport(turn: Turn, running: boolean, now: number): EvalTurnReport {
 
                 break;
 
+            case TURN_STOPPED:
+
+                ended = "stopped";
+
+                break;
+
+            case TURN_FAILED:
+
+                ended ??= "failed";
+
+                break;
+
             case "notice":
 
                 if (event.permission?.refused)
@@ -255,7 +269,8 @@ function turnReport(turn: Turn, running: boolean, now: number): EvalTurnReport {
         calls,
         ...(findings ? { findings } : {}),
         ...(error ? { error: true } : {}),
-        ...(running ? { running: true } : {})
+        ...(running ? { running: true } : {}),
+        ...(ended && !running ? { ended } : {})
     };
 }
 

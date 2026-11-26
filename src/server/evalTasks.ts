@@ -233,12 +233,13 @@ export function evalTasks(): { tasks: EvalTask[]; problems: string[] } {
 }
 
 /**
- * What is sent for a task: the text as the person left it in the message
- * box, and for a `find` or `fix` task the closing lines under it.
+ * The lines a `find` or `fix` task adds under the message, after the
+ * variant's own text. A task with no kind adds none: "". They are kept
+ * with the evaluation when it is made, so every variant gets the same.
  */
-export function taskMessage(text: string, kind: EvalTask["kind"]): string {
+export function taskClosing(kind: EvalTask["kind"]): string {
 
-    return kind ? `${text.trim()}\n\n${CLOSING[kind]}` : text;
+    return kind ? CLOSING[kind] : "";
 }
 
 /**

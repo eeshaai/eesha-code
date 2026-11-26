@@ -28,6 +28,8 @@ import { checkPlan, markTaskDone } from "./planTools";
  *      the same `task_done` step the real runtimes use. It writes no code.
  *   4. A chat message with the words "fake write" writes the file
  *      fake-note.txt in the working folder.
+ *   5. A chat message with the words "fake slow" keeps working for about
+ *      a minute, step by step, so a test can press Stop while it works.
  *
  * Every file it writes goes through the host's permission check first,
  * like a real runtime's edit. At a level that asks, the person gets a
@@ -47,6 +49,12 @@ export const FAKE_WRITE_WORDS = "fake write";
 
 /** The file a "fake write" message writes, in the working folder. */
 export const FAKE_NOTE = "fake-note.txt";
+
+/** The words in a chat message that make the fake work slowly, until it is stopped or about a minute has passed. */
+export const FAKE_SLOW_WORDS = "fake slow";
+
+/** How many steps a "fake slow" turn waits: a minute at the normal step. */
+const SLOW_STEPS = 240;
 
 /** The one question the fake asks, and its two answers. */
 export const FAKE_QUESTION = "Fake runtime question: which answer should go into the document?";
@@ -98,6 +106,10 @@ class FakeSession implements AgentSession {
 
         if (config.resume)
             this.resumed = true;
+
+        // Stop on a new session's turn comes through this signal, as it
+        // does for the real runtimes. Without it, Stop did nothing here.
+        config.signal?.addEventListener("abort", () => void this.abort());
     }
 
     on(handler: (event: AgentEvent) => void): () => void {
@@ -179,6 +191,17 @@ class FakeSession implements AgentSession {
                 if (message.prompt.toLowerCase().includes(FAKE_WRITE_WORDS)) {
 
                     await this.writeNote(live);
+                    return;
+                }
+
+                if (message.prompt.toLowerCase().includes(FAKE_SLOW_WORDS)) {
+
+                    for (let step = 0; step < SLOW_STEPS && live(); step++)
+                        await this.wait();
+
+                    if (live())
+                        this.say("Fake answer, after working slowly.");
+
                     return;
                 }
 

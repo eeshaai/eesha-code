@@ -103,6 +103,13 @@ export interface HostServer {
     /** A chat was deleted: its folder list and empty scratch folder go. */
     chatDeleted(chatId: string): void;
 
+    /**
+     * The chat on screen was deleted: the tab showing it goes to this
+     * workspace's page, and no longer shows the chat. Nothing happens when
+     * the workspace is not in the list, or no tab shows the chat.
+     */
+    toWorkspacePage(chat: ChatController, workspace: string): void;
+
     /** Keeps a folder in the session list with no session in it, as a workspace of its own. */
     keepFolder(folder: string): Promise<void>;
 
@@ -875,6 +882,13 @@ export class ServerChatHost implements ChatHost {
     deleted(chatId: string): void {
 
         this.server.chatDeleted(chatId);
+    }
+
+    /** See `ChatHost.leaveDeleted`. A chat in no workspace stays on screen as a new chat. */
+    leaveDeleted(): void {
+
+        if (this.chat && this.workspaceId)
+            this.server.toWorkspacePage(this.chat, this.workspaceId);
     }
 
     notify(chat: ChatController, notice: ChatNotice): void {

@@ -46,6 +46,9 @@ function setUp(folders: string[], chatId = "chat-1", answer?: string, scratch = 
     const changed: string[] = [];
     const kept: string[] = [];
 
+    /** The workspace pages a deleted chat's tab was sent to. */
+    const leftFor: string[] = [];
+
     const server: HostServer = {
         store: new FileStore(path.join(temporaryFolder(), "state.json")),
         sessions: new AgentSessions(),
@@ -62,6 +65,7 @@ function setUp(folders: string[], chatId = "chat-1", answer?: string, scratch = 
         chatChanged: chat => { changed.push(chat.chatId); },
         renamed: () => undefined,
         chatDeleted: () => undefined,
+        toWorkspacePage: (_chat, workspace) => { leftFor.push(workspace); },
         keepFolder: async folder => { kept.push(folder); },
         notify: () => undefined,
         phaseOwner: () => undefined,
@@ -73,10 +77,31 @@ function setUp(folders: string[], chatId = "chat-1", answer?: string, scratch = 
 
     host.bind(chat);
 
-    return { host, chat, sent, asked, changed, kept, server };
+    return { host, chat, sent, asked, changed, kept, leftFor, server };
 }
 
 beforeEach(() => contentAtMock.mockReset());
+
+describe("the chat on screen deleted", () => {
+
+    it("sends its tab to the page of the workspace it is in", () => {
+
+        const { host, leftFor } = setUp([temporaryFolder()], "chat-1", undefined, false, MEMORY_OFF, "ws-key");
+
+        host.leaveDeleted();
+
+        expect(leftFor).toEqual(["ws-key"]);
+    });
+
+    it("in no workspace, sends the tab nowhere - a new chat takes its place", () => {
+
+        const { host, leftFor } = setUp([temporaryFolder()]);
+
+        host.leaveDeleted();
+
+        expect(leftFor).toEqual([]);
+    });
+});
 
 describe("a copy made by going back", () => {
 

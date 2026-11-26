@@ -47,8 +47,22 @@ export interface EvalTotals {
     /** The runtime wrote an error in one of the turns. */
     error: boolean;
 
+    /** A turn did not end by itself: stopped by the person, or failed. Such a variant is not compared. */
+    ended?: "stopped" | "failed";
+
     /** The model ids the runtime said it used. Empty: it did not say. */
     models: string[];
+}
+
+/**
+ * Whether a variant's numbers take part in the green marks: it got its
+ * message and finished by itself. One still working has no end yet, and
+ * one stopped or failed did less - its low time and cost would look like
+ * the best.
+ */
+export function comparable(totals: EvalTotals): boolean {
+
+    return totals.turns > 0 && !totals.running && totals.ended === undefined;
 }
 
 /**
@@ -77,6 +91,7 @@ export function totalsOf(variant: Pick<EvalVariantReport, "turns">, firstOnly: b
         totals.outputTokens = add(totals.outputTokens, turn.outputTokens);
         totals.running ||= turn.running === true;
         totals.error ||= turn.error === true;
+        totals.ended ??= turn.ended;
 
         for (const charge of turn.cost) {
 

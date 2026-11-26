@@ -63,6 +63,9 @@ export type ToPage =
     /** This chat was opened in another browser tab, which now shows it. */
     | { type: "eesha.moved" }
 
+    /** The chat on screen was deleted: this tab goes to its workspace's page, by the workspace's key. */
+    | { type: "eesha.workspacePage"; workspace: string }
+
     /** This spec was opened in another browser tab, which now shows it. The chat here stays. */
     | { type: "eesha.specMoved"; workspace: string; spec: string; folder?: string }
 
@@ -1460,23 +1463,24 @@ export const API = {
     evalGet: "/api/eval/get",
 
     /**
-     * `{ name, folder, variants: EvalVariantAsk[] }` →
-     * `{ eval: EvalView }` or `{ problem }`. Makes the evaluation and one
-     * copy of the folder per variant. Nothing is sent to an agent yet.
+     * `{ name, folder, variants: EvalVariantAsk[], text, task? }` →
+     * `{ eval: EvalView, sendProblem? }` or `{ problem }`. Makes the
+     * evaluation and one copy of the folder per variant, then sends each
+     * variant its one message: `text` (the message to all), with the
+     * variant's own text under it. `task`: the saved task the text came
+     * from - a `find` or `fix` task gets its closing lines added (how to
+     * list the findings). `text` and `task` are kept with the evaluation.
+     * `sendProblem`: the evaluation was made, but the message did not go -
+     * Send to all on its page sends the kept one.
      */
     evalCreate: "/api/eval/create",
 
     /**
-     * `{ name, text, task?, onlyNew? }` → `{ ok: true }` or `{ problem }`.
-     * Each variant gets one message, ever. This sends it: the message to
-     * all, or a variant's own message instead, with the variant's extra
-     * text under it. `task`: the saved task the text came from - a
-     * `find` or `fix` task gets its closing lines added (how to list the
-     * findings). The first send is kept with the evaluation; after it,
-     * `text` and `task` are not read and the kept ones are sent.
-     * Without `onlyNew` (Send to all): refused once any variant got its
-     * message. With it (Send to new variants): only to the variants that
-     * have not.
+     * `{ name, onlyNew? }` → `{ ok: true }` or `{ problem }`. Sends the
+     * kept message to all, each variant's own text under it. Each variant
+     * gets one message, ever. Without `onlyNew` (Send to all): only while
+     * no variant got its message - when the send at create did not go.
+     * With it (Send to new variants): only to the variants that have not.
      */
     evalSend: "/api/eval/send",
 
@@ -1494,13 +1498,8 @@ export const API = {
      */
     evalVariantAdd: "/api/eval/variant/add",
 
-    /**
-     * `{ name, variant: EvalVariantAsk }` (its `name` says which) →
-     * `{ eval: EvalView }` or `{ problem }`. Changes a variant's runtime,
-     * model, mode, effort and extra text. Refused once a message was sent
-     * to it: its numbers would no longer be about one setup.
-     */
-    evalVariantChange: "/api/eval/variant/change",
+    /** `{ name, variant }` → `{ ok: true }` or `{ problem }`. Stops the variant's turn, when one runs. */
+    evalStop: "/api/eval/stop",
 
     /**
      * `{ name }` → `{ report: EvalReport }` or `{ problem }`. Every
@@ -1584,9 +1583,6 @@ export interface EvalVariantAsk {
 
     /** Text sent to this variant only, under the message to all. */
     extra?: string;
-
-    /** This variant's own message, sent instead of the message to all. */
-    own?: string;
 }
 
 /** One evaluation in the list of them. */
@@ -1620,9 +1616,6 @@ export interface EvalVariantView {
 
     /** Text sent to this variant only, under the message to all. */
     extra?: string;
-
-    /** This variant's own message, sent instead of the message to all. */
-    own?: string;
 
     /** The runtime's version when its message was sent, when the runtime said. */
     version?: string;
@@ -1662,8 +1655,12 @@ export interface EvalView {
 
     variants: EvalVariantView[];
 
-    /** The first message to all, as typed, and its saved task - kept: a variant added later gets the same. */
-    sent?: { text: string; task?: string; at: number };
+    /**
+     * The message to all, as typed when the evaluation was made, its saved
+     * task, and the task's closing lines as they were then ("" for a task
+     * with no kind) - every variant gets exactly this, one added later too.
+     */
+    sent?: { text: string; task?: string; closing?: string; at: number };
 
     pick?: EvalPick;
 }
@@ -1735,6 +1732,9 @@ export interface EvalTurnReport {
 
     /** Not ended yet. */
     running?: boolean;
+
+    /** It did not end by itself: the person pressed Stop, or the turn failed. Absent: it finished. */
+    ended?: "stopped" | "failed";
 }
 
 /** One file a variant's copy differs in from where it started. */

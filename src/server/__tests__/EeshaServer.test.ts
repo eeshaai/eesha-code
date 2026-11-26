@@ -2018,6 +2018,15 @@ describe("the Evaluator", () => {
         return folder;
     }
 
+    /** Makes an evaluation as the create page does: the common message is typed there, and sent at once. */
+    const create = (body: Record<string, unknown>) => post("/api/eval/create", { text: "hello", ...body });
+
+    /** All a variant's chats got: the one its message went to, and any opened for it later. */
+    const sentTo = (chatId: string) => made.filter(chat => chat.chatId === chatId).flatMap(chat => chat.received);
+
+    /** A variant's chat as it is now: the last one opened for it. */
+    const live = (chatId: string) => made.filter(chat => chat.chatId === chatId).at(-1)!;
+
     afterEach(() => {
 
         fs.rmSync(settings(), { force: true });
@@ -2026,7 +2035,7 @@ describe("the Evaluator", () => {
 
     it("refuses every request while its flag is off", async () => {
 
-        for (const route of ["/api/eval/list", "/api/eval/get", "/api/eval/create", "/api/eval/send", "/api/eval/tasks", "/api/eval/variant/add", "/api/eval/variant/change", "/api/eval/report", "/api/eval/pick", "/api/eval/delete"]) {
+        for (const route of ["/api/eval/list", "/api/eval/get", "/api/eval/create", "/api/eval/send", "/api/eval/tasks", "/api/eval/variant/add", "/api/eval/stop", "/api/eval/report", "/api/eval/pick", "/api/eval/delete"]) {
 
             const answer = await post(route, { name: "one" });
 
@@ -2056,11 +2065,12 @@ describe("the Evaluator", () => {
         await turnOn();
 
         const folder = workFolder();
-        const made = await post("/api/eval/create", { name: "one", folder, variants: [{ runtime: "claude" }, { name: "short-prompt", runtime: "claude", model: "opus" }] });
+        const answer = await create({ name: "one", folder, variants: [{ runtime: "claude" }, { name: "short-prompt", runtime: "claude", model: "opus" }] });
 
-        expect(made.status).toBe(200);
+        expect(answer.status).toBe(200);
+        expect(json(answer).sendProblem).toBeUndefined();
 
-        const shown = json(made).eval;
+        const shown = json(answer).eval;
 
         expect(shown).toMatchObject({ name: "one", folder });
         expect(shown.variants.map((one: { name: string }) => one.name)).toEqual(["one-1", "short-prompt"]);
@@ -2073,6 +2083,11 @@ describe("the Evaluator", () => {
         const state = JSON.parse(fs.readFileSync(eeshaPath("evals", "one", "state.json"), "utf8"));
 
         expect(state[`chat.pick:${shown.variants[1].chatId}`]).toEqual({ provider: "claude", model: "opus" });
+
+        // Every variant got the message at once, and the message is kept with the evaluation.
+        expect(shown.variants.map((one: { chatId: string }) => sentTo(one.chatId))).toEqual([[{ type: "send", text: "hello" }], [{ type: "send", text: "hello" }]]);
+        expect(shown.sent).toMatchObject({ text: "hello" });
+        expect(shown.variants.map((one: { version?: string }) => one.version)).toEqual(["claude 9.9.9", "claude 9.9.9"]);
 
         expect(json(await post("/api/eval/get", { name: "one" })).eval.variants).toHaveLength(2);
         expect(json(await post("/api/eval/list", {})).evals).toEqual([{ name: "one", folder, createdAt: shown.createdAt, variants: 2 }]);
@@ -2091,12 +2106,21 @@ describe("the Evaluator", () => {
         fs.writeFileSync(path.join(folder, "a.txt"), "committed\n");
         git("add", "-A");
         git("commit", "--quiet", "-m", "first");
+        fs.writeFileSync(path.join(folder, "b.txt"), "committed later\n");
+        git("add", "-A");
+        git("commit", "--quiet", "-m", "second");
         fs.writeFileSync(path.join(folder, "a.txt"), "not committed\n");
 
-        const shown = json(await post("/api/eval/create", { name: "ingit", folder, variants: [{ runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "ingit", folder, variants: [{ runtime: "claude" }, { runtime: "claude" }] })).eval;
+        const copy = eeshaPath("evals", "ingit", "copies", "ingit-1");
 
         expect(shown.commit).toMatch(/^[0-9a-f]{7}$/);
-        expect(fs.readFileSync(path.join(eeshaPath("evals", "ingit", "copies", "ingit-1"), "a.txt"), "utf8")).toBe("not committed\n");
+        expect(fs.readFileSync(path.join(copy, "a.txt"), "utf8")).toBe("not committed\n");
+        expect(fs.readFileSync(path.join(copy, "b.txt"), "utf8")).toBe("committed later\n");
+        expect(fs.readFileSync(path.join(eeshaPath("evals", "ingit", "copies", "ingit-2"), "a.txt"), "utf8")).toBe("not committed\n");
+
+        // The starting commit alone: the two older commits were not fetched.
+        expect(execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: copy, encoding: "utf8" }).trim()).toBe("1");
     });
 
     it("refuses an evaluation it cannot make, and says why", async () => {
@@ -2104,7 +2128,7 @@ describe("the Evaluator", () => {
         await turnOn();
 
         const folder = workFolder();
-        const refused = async (body: unknown) => json(await post("/api/eval/create", body)).problem as string;
+        const refused = async (body: Record<string, unknown>) => json(await create(body)).problem as string;
 
         expect(await refused({ name: "a b", folder, variants: [{ runtime: "claude" }] })).toContain("letters, digits");
         expect(await refused({ name: "one", variants: [{ runtime: "claude" }] })).toContain("Pick the folder");
@@ -2116,46 +2140,58 @@ describe("the Evaluator", () => {
         expect(await refused({ name: "one", folder, variants: [{ name: "x y", runtime: "claude" }] })).toContain("is not a name");
         expect(await refused({ name: "one", folder, variants: [{ name: "same", runtime: "claude" }, { name: "Same", runtime: "claude" }] })).toContain("Two variants");
 
+        // Nothing to send: no common message, and no text of its own.
+        expect(await refused({ name: "one", folder, text: "  ", variants: [{ runtime: "claude" }] })).toContain("Type a common message, or a text of its own for every variant");
+        expect(await refused({ name: "one", folder, text: "", variants: [{ name: "a", runtime: "claude", extra: "Use a map." }, { name: "b", runtime: "claude" }] })).toContain("Nothing to send to b");
+        expect(await refused({ name: "one", folder, text: 5, variants: [{ runtime: "claude" }] })).toContain("The common message is text");
+        expect(await refused({ name: "one", folder, task: "no-such-task", variants: [{ runtime: "claude" }] })).toContain("no saved task named");
+
         // Nothing was left behind by the refusals.
         expect(fs.existsSync(eeshaPath("evals", "one"))).toBe(false);
 
-        expect((await post("/api/eval/create", { name: "one", folder, variants: [{ runtime: "claude" }] })).status).toBe(200);
+        expect((await create({ name: "one", folder, variants: [{ runtime: "claude" }] })).status).toBe(200);
         expect(await refused({ name: "one", folder, variants: [{ runtime: "claude" }] })).toContain("already an evaluation");
     });
 
-    it("sends one message to every variant, and refuses while one still works", async () => {
+    it("sends every variant its message when the evaluation is made, and refuses Send to all while one works", async () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude" }, { runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "one", folder: workFolder(), variants: [{ runtime: "claude" }, { runtime: "claude" }] })).eval;
         const ids = shown.variants.map((one: { chatId: string }) => one.chatId) as string[];
 
-        expect(json(await post("/api/eval/send", { name: "one", text: "  " })).problem).toContain("Type a message");
-        expect((await post("/api/eval/send", { name: "none", text: "hello" })).status).toBe(404);
+        expect(ids.map(sentTo)).toEqual([[{ type: "send", text: "hello" }], [{ type: "send", text: "hello" }]]);
+        expect((await post("/api/eval/send", { name: "none" })).status).toBe(404);
 
-        expect((await post("/api/eval/send", { name: "one", text: "hello" })).status).toBe(200);
+        // Neither has a chat file yet nor works here, and each got its message all the same: its send was
+        // written down before it went. A second press right after is refused.
+        expect(shown.variants.map((one: { started: boolean }) => one.started)).toEqual([true, true]);
+        expect((await post("/api/eval/send", { name: "one" })).status).toBe(409);
+        expect(ids.map(id => sentTo(id).length)).toEqual([1, 1]);
 
-        const chats = ids.map(id => made.find(chat => chat.chatId === id)!);
+        // The second one still works, its column open: nothing more goes to either.
+        const tab = await events("view-eval-working", ids[1]);
 
-        expect(chats.map(chat => chat.received)).toEqual([[{ type: "send", text: "hello" }], [{ type: "send", text: "hello" }]]);
+        open.push(tab);
+        await tab.next("eesha.hello");
 
-        // One is still working: nothing goes to either.
-        chats[1]!.working = true;
+        live(ids[1]!).working = true;
 
-        const refused = await post("/api/eval/send", { name: "one", text: "again" });
+        const refused = await post("/api/eval/send", { name: "one" });
 
         expect(refused.status).toBe(409);
-        expect(chats.map(chat => chat.received.length)).toEqual([1, 1]);
+        expect(json(refused).problem).toContain("one message");
+        expect(ids.map(id => sentTo(id).length)).toEqual([1, 1]);
         expect(json(await post("/api/eval/get", { name: "one" })).eval.variants.map((one: { working: boolean }) => one.working)).toEqual([false, true]);
 
-        chats[1]!.working = false;
+        live(ids[1]!).working = false;
     });
 
     it("keeps a variant's session out of the session list and the sessions folder", async () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
         const chatId = shown.variants[0].chatId as string;
 
         // Its chat in a column's frame: a tab of its own.
@@ -2165,8 +2201,6 @@ describe("the Evaluator", () => {
 
         expect(((await tab.next("eesha.hello")).chat as { chatId: string }).chatId).toBe(chatId);
 
-        await post("/api/eval/send", { name: "one", text: "hello" });
-
         expect(readSession(chatId)).toBeUndefined();
         expect((json(await post("/api/chats", {})).chats as ChatRow[]).map(row => row.chatId)).not.toContain(chatId);
     });
@@ -2175,7 +2209,7 @@ describe("the Evaluator", () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
         const chatId = shown.variants[0].chatId as string;
 
         const pageTab = await events("view-eval-page");
@@ -2212,7 +2246,10 @@ describe("the Evaluator", () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
+
+        // The chat its message went to is let go once idle, with no column open.
+        await vi.waitFor(() => expect(live(shown.variants[0].chatId).closed).toBe(true));
 
         expect((await post("/api/settings/change", { flag: { name: "evals", on: false } })).status).toBe(200);
 
@@ -2233,7 +2270,7 @@ describe("the Evaluator", () => {
 
         fs.rmSync(eeshaPath("memory.db"), { force: true });
 
-        const shown = json(await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
         const chatId = shown.variants[0].chatId as string;
 
         // Opened, as a column's frame opens it.
@@ -2278,12 +2315,13 @@ describe("the Evaluator", () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", {
+        const shown = json(await create({
             name: "one", folder: workFolder(),
             variants: [{ runtime: "claude" }, { name: "short", runtime: "claude", model: "opus", mode: "plan", effort: "high", extra: "  Change as few files as you can.  " }]
         })).eval;
 
-        expect(shown.variants[0]).toMatchObject({ started: false, working: false });
+        // Its message went when it was made.
+        expect(shown.variants[0]).toMatchObject({ started: true, working: false });
         expect(shown.variants[0].extra).toBeUndefined();
         expect(shown.variants[1]).toMatchObject({ model: "opus", mode: "plan", effort: "high", extra: "Change as few files as you can." });
 
@@ -2291,14 +2329,10 @@ describe("the Evaluator", () => {
 
         expect(state[`chat.pick:${shown.variants[1].chatId}`]).toEqual({ provider: "claude", model: "opus", mode: "plan", effort: "high" });
 
-        await post("/api/eval/send", { name: "one", text: "hello" });
+        expect(sentTo(shown.variants[0].chatId)).toEqual([{ type: "send", text: "hello" }]);
+        expect(sentTo(shown.variants[1].chatId)).toEqual([{ type: "send", text: "hello\n\nChange as few files as you can." }]);
 
-        const sent = (chatId: string) => made.find(chat => chat.chatId === chatId)!.received;
-
-        expect(sent(shown.variants[0].chatId)).toEqual([{ type: "send", text: "hello" }]);
-        expect(sent(shown.variants[1].chatId)).toEqual([{ type: "send", text: "hello\n\nChange as few files as you can." }]);
-
-        const refused = json(await post("/api/eval/create", { name: "two", folder: workFolder(), variants: [{ runtime: "claude", mode: "a\nb" }] })).problem;
+        const refused = json(await create({ name: "two", folder: workFolder(), variants: [{ runtime: "claude", mode: "a\nb" }] })).problem;
 
         expect(refused).toContain("the mode is one line");
     });
@@ -2313,45 +2347,34 @@ describe("the Evaluator", () => {
         expect(listed.folder).toBe(eeshaPath("eval-tasks"));
         expect(listed.problems).toEqual([]);
 
-        const shown = json(await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude", extra: "Be short." }] })).eval;
+        // The common message as typed, then the variant's own text, then the task's closing lines last.
+        const shown = json(await create({ name: "one", folder: workFolder(), text: "Look only in src.", task: "find-security", variants: [{ runtime: "claude", extra: "Be short." }] })).eval;
 
-        expect(json(await post("/api/eval/send", { name: "one", text: "hello", task: "no-such-task" })).problem).toContain("no saved task named");
-
-        // The text as the person left it in the box, then the variant's own text, then the task's closing lines last.
-        expect((await post("/api/eval/send", { name: "one", text: "Look only in src.", task: "find-security" })).status).toBe(200);
-
-        const sent = (made.find(one => one.chatId === shown.variants[0].chatId)!.received[0] as { text: string }).text;
+        const sent = (sentTo(shown.variants[0].chatId)[0] as { text: string }).text;
 
         expect(sent.startsWith("Look only in src.\n\nBe short.\n\nDo not change, create or delete any file")).toBe(true);
         expect(sent).toContain("```findings");
+        expect(shown.sent).toMatchObject({ text: "Look only in src.", task: "find-security" });
     });
 
     it("joins the common message and each variant's own text, and names a variant left with nothing", async () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", {
-            name: "one", folder: workFolder(),
-            variants: [{ name: "a", runtime: "claude", extra: "Use a map." }, { name: "b", runtime: "claude" }]
-        })).eval;
+        // Nothing at the top and nothing of its own: the variant is named, and nothing is made.
+        const variants = [{ name: "a", runtime: "claude", extra: "Use a map." }, { name: "b", runtime: "claude" }];
 
-        const [first, second] = shown.variants.map((one: { chatId: string }) => one.chatId) as string[];
-        const sent = (chatId: string) => made.find(chat => chat.chatId === chatId)?.received ?? [];
-
-        // Nothing at the top and nothing of its own: the variant is named, and nothing goes to anyone.
-        const refused = json(await post("/api/eval/send", { name: "one", text: "  " }));
-
-        expect(refused.problem).toContain("Nothing to send to b");
-        expect(sent(first!)).toEqual([]);
+        expect(json(await create({ name: "one", folder: workFolder(), text: "  ", variants })).problem).toContain("Nothing to send to b");
+        expect(fs.existsSync(eeshaPath("evals", "one"))).toBe(false);
 
         // A text of its own and nothing at the top: that text alone.
-        expect((await post("/api/eval/variant/change", { name: "one", variant: { name: "b", runtime: "claude", extra: "Use a list." } })).status).toBe(200);
-        expect((await post("/api/eval/send", { name: "one", text: "" })).status).toBe(200);
+        const shown = json(await create({ name: "one", folder: workFolder(), text: "", variants: [variants[0], { ...variants[1], extra: "Use a list." }] })).eval;
+        const [first, second] = shown.variants.map((one: { chatId: string }) => one.chatId) as string[];
 
-        expect(sent(first!)).toEqual([{ type: "send", text: "Use a map." }]);
-        expect(sent(second!)).toEqual([{ type: "send", text: "Use a list." }]);
+        expect(sentTo(first!)).toEqual([{ type: "send", text: "Use a map." }]);
+        expect(sentTo(second!)).toEqual([{ type: "send", text: "Use a list." }]);
 
-        // The empty common message is kept, so the top box stays empty and locked.
+        // The empty common message is kept: the top box shows it was empty.
         expect(json(await post("/api/eval/get", { name: "one" })).eval.sent).toMatchObject({ text: "" });
     });
 
@@ -2359,84 +2382,82 @@ describe("the Evaluator", () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "one", folder: workFolder(), text: "Look only in src.", task: "find-security", variants: [{ runtime: "claude" }] })).eval;
         const old = shown.variants[0].chatId as string;
 
-        // The first variant already got a message.
+        // The first variant got its message when the evaluation was made.
         markStarted("one", old);
 
         // Every variant already got a message: nothing to send to.
-        expect(json(await post("/api/eval/send", { name: "one", text: "hello", onlyNew: true })).problem).toContain("already got its message");
+        expect(json(await post("/api/eval/send", { name: "one", onlyNew: true })).problem).toContain("already got its message");
 
         const added = json(await post("/api/eval/variant/add", { name: "one", variant: { runtime: "claude", model: "new-model" } })).eval;
         const fresh = added.variants[1].chatId as string;
 
-        // A saved Find task: the new variant gets the closing lines, the old one gets nothing.
-        expect((await post("/api/eval/send", { name: "one", text: "Look only in src.", task: "find-security", onlyNew: true })).status).toBe(200);
+        // The kept message and its saved task: the new variant gets what the first one got, closing lines too. The first gets nothing more.
+        expect((await post("/api/eval/send", { name: "one", onlyNew: true })).status).toBe(200);
 
-        const sent = (chatId: string) => made.find(chat => chat.chatId === chatId)?.received ?? [];
+        expect(sentTo(old)).toHaveLength(1);
+        expect(sentTo(fresh)).toEqual(sentTo(old));
+        expect((sentTo(fresh)[0] as { text: string }).text).toContain("```findings");
 
-        expect(sent(old)).toEqual([]);
-        expect(sent(fresh)).toHaveLength(1);
-        expect((sent(fresh)[0] as { text: string }).text).toContain("```findings");
-
-        // Kept: the message as typed and its task, and the runtime's version on the variant it went to.
+        // Kept: the message as typed and its task, and the runtime's version on each variant it went to.
         const after = json(await post("/api/eval/get", { name: "one" })).eval;
 
         expect(after.sent).toMatchObject({ text: "Look only in src.", task: "find-security" });
-        expect(after.variants[1].version).toBe("claude 9.9.9");
-        expect(after.variants[0].version).toBeUndefined();
+        expect(after.variants.map((one: { version?: string }) => one.version)).toEqual(["claude 9.9.9", "claude 9.9.9"]);
     });
 
-    it("gives each variant one message: Send to all once, then the kept message to new variants, never from a column", async () => {
+    it("gives each variant one message: when it is made, then the kept message to new variants, never from a column", async () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", {
+        const shown = json(await create({
             name: "one", folder: workFolder(),
-            variants: [{ runtime: "claude" }, { name: "own", runtime: "claude", own: "Do it your way.", extra: "Be short." }]
+            variants: [{ runtime: "claude" }, { name: "own", runtime: "claude", extra: "Be short." }]
         })).eval;
 
         const [first, second] = shown.variants.map((one: { chatId: string }) => one.chatId) as string[];
-        const sent = (chatId: string) => made.find(chat => chat.chatId === chatId)?.received ?? [];
 
-        expect(shown.variants[1]).toMatchObject({ own: "Do it your way.", extra: "Be short." });
+        expect(shown.variants[1]).toMatchObject({ extra: "Be short." });
 
-        expect((await post("/api/eval/send", { name: "one", text: "hello" })).status).toBe(200);
-
-        // The own message goes instead of the message to all; the extra text under it.
-        expect(sent(first!)).toEqual([{ type: "send", text: "hello" }]);
-        expect(sent(second!)).toEqual([{ type: "send", text: "Do it your way.\n\nBe short." }]);
+        // The message to all first; a variant's own text under it.
+        expect(sentTo(first!)).toEqual([{ type: "send", text: "hello" }]);
+        expect(sentTo(second!)).toEqual([{ type: "send", text: "hello\n\nBe short." }]);
 
         markStarted("one", first!);
         markStarted("one", second!);
 
-        // A second Send to all is refused: each variant got its message.
-        const again = await post("/api/eval/send", { name: "one", text: "and now this" });
+        // Send to all again is refused: each variant got its message.
+        const again = await post("/api/eval/send", { name: "one" });
 
         expect(again.status).toBe(409);
         expect(json(again).problem).toContain("one message");
 
-        // A variant added later gets the kept message - not what the box says now.
+        // A variant added later gets the kept message - a text sent with the ask is not read.
         const added = json(await post("/api/eval/variant/add", { name: "one", variant: { runtime: "claude" } })).eval;
         const third = added.variants[2].chatId as string;
 
         expect((await post("/api/eval/send", { name: "one", text: "something else", onlyNew: true })).status).toBe(200);
-        expect(sent(third)).toEqual([{ type: "send", text: "hello" }]);
+        expect(sentTo(third)).toEqual([{ type: "send", text: "hello" }]);
 
-        // A column's own box sends nothing: the page refuses it, and the column is told why.
+        // A column sends nothing and picks nothing: the page refuses it, and the column is told why.
         const tab = await events("view-eval-one-message", first!);
 
         open.push(tab);
         await tab.next("eesha.hello");
 
-        const refused = await post("/api/chat", { view: "view-eval-one-message", message: { type: "send", text: "second message" } });
+        for (const message of [{ type: "send", text: "second message" }, { type: "setAiChoice", pick: { provider: "claude", model: "opus" } }]) {
 
-        expect(refused.status).toBe(409);
-        expect((await tab.next("eesha.note")).text).toContain("one message");
-        expect(sent(first!)).toHaveLength(1);
+            const refused = await post("/api/chat", { view: "view-eval-one-message", message });
 
-        // Picking its runtime and model from the column still goes through.
+            expect(refused.status, message.type).toBe(409);
+            expect((await tab.next("eesha.note")).text).toContain("one message");
+        }
+
+        expect(sentTo(first!)).toHaveLength(1);
+
+        // Showing the column still goes through.
         expect((await post("/api/chat", { view: "view-eval-one-message", message: { type: "ready" } })).status).toBe(200);
     });
 
@@ -2444,7 +2465,7 @@ describe("the Evaluator", () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude" }, { name: "gone", runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "one", folder: workFolder(), variants: [{ runtime: "claude" }, { name: "gone", runtime: "claude" }] })).eval;
         const chatId = shown.variants[1].chatId as string;
 
         markStarted("one", chatId);
@@ -2479,7 +2500,7 @@ describe("the Evaluator", () => {
         git("add", "-A");
         git("commit", "--quiet", "-m", "first");
 
-        await post("/api/eval/create", { name: "later", folder, variants: [{ runtime: "claude" }] });
+        await create({ name: "later", folder, variants: [{ runtime: "claude" }] });
 
         // The folder moved on since: a variant added now must not see it.
         fs.writeFileSync(path.join(folder, "a.txt"), "six months on\n");
@@ -2503,27 +2524,32 @@ describe("the Evaluator", () => {
         expect(await problem({ runtime: "claude" })).toContain("up to 6 variants");
     });
 
-    it("changes a variant's setup before its first message, and refuses after it", async () => {
+    it("stops one variant's turn, and says so when it is not working", async () => {
 
         await turnOn();
 
-        const shown = json(await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude" }, { runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "one", folder: workFolder(), variants: [{ runtime: "claude" }, { runtime: "claude" }] })).eval;
         const [first, second] = shown.variants as { name: string; chatId: string }[];
 
-        const changed = json(await post("/api/eval/variant/change", { name: "one", variant: { name: first!.name, runtime: "claude", model: "opus", effort: "low", extra: "Be short." } })).eval;
+        // Its column is open while it works.
+        const tab = await events("view-eval-stop", first!.chatId);
 
-        expect(changed.variants[0]).toMatchObject({ name: first!.name, chatId: first!.chatId, model: "opus", effort: "low", extra: "Be short." });
-        expect(JSON.parse(fs.readFileSync(eeshaPath("evals", "one", "state.json"), "utf8"))[`chat.pick:${first!.chatId}`]).toEqual({ provider: "claude", model: "opus", effort: "low" });
+        open.push(tab);
+        await tab.next("eesha.hello");
 
-        markStarted("one", second!.chatId);
+        const chat = live(first!.chatId);
 
-        expect(json(await post("/api/eval/get", { name: "one" })).eval.variants.map((one: { started: boolean }) => one.started)).toEqual([false, true]);
+        chat.working = true;
 
-        const refused = await post("/api/eval/variant/change", { name: "one", variant: { name: second!.name, runtime: "claude", model: "opus" } });
+        expect((await post("/api/eval/stop", { name: "one", variant: first!.name })).status).toBe(200);
+        expect(chat.received.at(-1)).toEqual({ type: "cancel" });
 
-        expect(refused.status).toBe(409);
-        expect(json(refused).problem).toContain("Copy as new variant");
-        expect((await post("/api/eval/variant/change", { name: "one", variant: { name: "nobody", runtime: "claude" } })).status).toBe(404);
+        chat.working = false;
+
+        // Not working: nothing to stop. No such variant, or no such evaluation: not found.
+        expect(json(await post("/api/eval/stop", { name: "one", variant: second!.name })).problem).toContain("is not working");
+        expect((await post("/api/eval/stop", { name: "one", variant: "nobody" })).status).toBe(404);
+        expect((await post("/api/eval/stop", { name: "none", variant: first!.name })).status).toBe(404);
     });
 
     it("reports each variant's numbers, the files its copy differs in, and the size on disk", async () => {
@@ -2540,7 +2566,7 @@ describe("the Evaluator", () => {
         git("add", "-A");
         git("commit", "--quiet", "-m", "first");
 
-        const shown = json(await post("/api/eval/create", { name: "rep", folder, variants: [{ runtime: "claude" }, { runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "rep", folder, variants: [{ runtime: "claude" }, { runtime: "claude" }] })).eval;
         const copy = eeshaPath("evals", "rep", "copies", "rep-1");
 
         // What an agent would have done in the first variant's copy.
@@ -2569,11 +2595,82 @@ describe("the Evaluator", () => {
         expect(report.bytes).toBeGreaterThan(report.variants[0].bytes);
     });
 
+    it("keeps a saved task's closing lines with the evaluation: a variant added later gets the same, task file or not", async () => {
+
+        await turnOn();
+
+        // One of the person's own tasks.
+        const file = eeshaPath("eval-tasks", "mine.md");
+
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, "---\nkind: find\n---\nLook for slow loops.\n");
+
+        try {
+
+            const shown = json(await create({ name: "one", folder: workFolder(), text: "Look for slow loops.", task: "mine", variants: [{ runtime: "claude" }] })).eval;
+            const first = (sentTo(shown.variants[0].chatId)[0] as { text: string }).text;
+
+            expect(shown.sent.closing).toContain("```findings");
+            expect(first.endsWith(shown.sent.closing)).toBe(true);
+
+            // The task file is gone: a variant added later still gets the same message, closing lines included.
+            fs.rmSync(file);
+
+            const added = json(await post("/api/eval/variant/add", { name: "one", variant: { runtime: "claude" } })).eval;
+
+            expect((await post("/api/eval/send", { name: "one", onlyNew: true })).status).toBe(200);
+            expect(sentTo(added.variants[1].chatId)).toEqual([{ type: "send", text: first }]);
+
+            // An evaluation from before the lines were kept reads them from its task - gone now, so it says so.
+            const saved = JSON.parse(fs.readFileSync(eeshaPath("evals", "one", "eval.json"), "utf8"));
+
+            delete saved.sent.closing;
+            fs.writeFileSync(eeshaPath("evals", "one", "eval.json"), JSON.stringify(saved));
+
+            expect((await post("/api/eval/variant/add", { name: "one", variant: { runtime: "claude" } })).status).toBe(200);
+            expect(json(await post("/api/eval/send", { name: "one", onlyNew: true })).problem).toContain("is not there any more");
+
+        } finally {
+
+            fs.rmSync(eeshaPath("eval-tasks"), { recursive: true, force: true });
+        }
+    });
+
+    it("counts the copies again only after a turn ran, not each time the report is read", async () => {
+
+        await turnOn();
+
+        const folder = temporaryFolder();
+        const git = (...args: string[]) => execFileSync("git", args, { cwd: folder, env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t.invalid" } });
+
+        git("init", "--quiet");
+        git("config", "core.autocrlf", "false");
+        fs.writeFileSync(path.join(folder, "a.txt"), "text\n");
+        git("add", "-A");
+        git("commit", "--quiet", "-m", "first");
+
+        const shown = json(await create({ name: "rep", folder, variants: [{ runtime: "claude" }] })).eval;
+        const copy = eeshaPath("evals", "rep", "copies", "rep-1");
+        const files = async () => json(await post("/api/eval/report", { name: "rep" })).report.variants[0].files;
+
+        expect(await files()).toEqual([]);
+
+        // Changed outside a turn: the last count still holds.
+        fs.writeFileSync(path.join(copy, "a.txt"), "changed\n");
+
+        expect(await files()).toEqual([]);
+
+        // A turn ran - its chat file changed: counted again.
+        markStarted("rep", shown.variants[0].chatId);
+
+        expect(await files()).toEqual([{ path: "a.txt", status: "modified" }]);
+    });
+
     it("saves the person's own pick and note, and takes it away again", async () => {
 
         await turnOn();
 
-        await post("/api/eval/create", { name: "one", folder: workFolder(), variants: [{ runtime: "claude" }, { runtime: "claude" }] });
+        await create({ name: "one", folder: workFolder(), variants: [{ runtime: "claude" }, { runtime: "claude" }] });
 
         const saved = json(await post("/api/eval/pick", { name: "one", variant: "one-2", note: "  It also fixed the tests.  " })).eval;
 
@@ -2599,7 +2696,7 @@ describe("the Evaluator", () => {
         git("add", "-A");
         git("commit", "--quiet", "-m", "first");
 
-        const shown = json(await post("/api/eval/create", { name: "gone", folder, variants: [{ runtime: "claude" }] })).eval;
+        const shown = json(await create({ name: "gone", folder, variants: [{ runtime: "claude" }] })).eval;
         const chatId = shown.variants[0].chatId as string;
 
         expect(git("for-each-ref", "refs/eesha/evals")).toContain("refs/eesha/evals/gone");
@@ -2612,7 +2709,7 @@ describe("the Evaluator", () => {
 
         markStarted("gone", chatId);
 
-        const chat = made.find(one => one.chatId === chatId)!;
+        const chat = live(chatId);
 
         chat.working = true;
 

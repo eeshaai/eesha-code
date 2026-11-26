@@ -66,6 +66,9 @@ type Shown = { kind: "review"; files: ReviewFile[] };
 /** Where a first message typed on the start page waits for its new session's page to load. */
 const FIRST_TEXT_KEY = "eesha.firstText";
 
+/** Eesha Code's repository on GitHub, opened by the GitHub mark in the footer. */
+const REPO_URL = "https://github.com/eeshaai/eesha-code";
+
 /** A git diff tab's hover text - what the two sides are, as the Git list says it. */
 function gitWhere(ask: GitDiffAsk): string {
 
@@ -731,6 +734,11 @@ export default function App() {
 
                 case "eesha.moved":
                     return setMoved(true);
+
+                // The chat on screen was deleted: its workspace's page takes
+                // its place - in the Back list too, so Back skips the gone chat.
+                case "eesha.workspacePage":
+                    return goTo(workspaceAddress(message.workspace), true);
 
                 case "eesha.listChanged":
                     return void loadChats();
@@ -1836,6 +1844,15 @@ export default function App() {
                             </button>
                         )
                         : null}
+                    <a
+                        className="eesha-footer-github"
+                        href={REPO_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Eesha Code on GitHub"
+                        title="Eesha Code on GitHub">
+                        <UiIcon name="github" size="custom" />
+                    </a>
                 </>
             } />
     );

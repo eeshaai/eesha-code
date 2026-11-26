@@ -15,16 +15,18 @@ import { applyFontSize, applyTheme } from "./theme";
  * model and a little setup each - and shows their chats side by side,
  * so the person can compare them. It never says which variant did better.
  *
- *   /eval                       a form to make an evaluation, and the list of them
- *   /eval/<name>                one evaluation, live: a message box for all its
- *                               variants, then one column per variant
+ *   /eval                       a form to make an evaluation and send it, and the
+ *                               list of them. Everything is typed here: the common
+ *                               message, and each variant's setup and own text.
+ *   /eval/<name>                one evaluation, live: the message it was sent, then
+ *                               one column per variant. Nothing is typed there.
  *   /eval/<name>?variant=<v>    the same, with one variant's column as wide as the page
  *   /eval/<name>?view=report    its report - see EvalReport.tsx
  *
  * Each variant works in its own copy of the folder, and nobody is asked:
  * a tool call inside the copy runs, one outside it is refused. A column
  * is a frame showing that variant's own chat (EvalColumn.tsx), so the
- * thread and the message box are the ones every session has.
+ * thread is the one every session has - without its message box.
  *
  * Nothing of an evaluation shows in the session list, the search or the
  * start page.
@@ -106,6 +108,26 @@ function useAiOptions(): AiOptions | undefined {
     return options;
 }
 
+/** The saved tasks, where own ones go, and the own files that could not be read. `read` reads them again. */
+function useEvalTasks(): { tasks: EvalTask[]; folder: string; problems: string[]; read(): void } {
+
+    const [state, setState] = useState<{ tasks: EvalTask[]; folder: string; problems: string[] }>({ tasks: [], folder: "", problems: [] });
+
+    const read = useCallback(() => {
+
+        void bridge.request<{ tasks?: EvalTask[]; folder?: string; problems?: string[] }>(API.evalTasks, {}).then(answer => {
+
+            if (!answer.problem)
+                setState({ tasks: answer.tasks ?? [], folder: answer.folder ?? "", problems: answer.problems ?? [] });
+        });
+
+    }, []);
+
+    useEffect(read, [read]);
+
+    return { ...state, read };
+}
+
 export default function EvalPage({ name }: { name?: string }): React.JSX.Element {
 
     return (
@@ -117,7 +139,7 @@ export default function EvalPage({ name }: { name?: string }): React.JSX.Element
     );
 }
 
-/** `/eval`: the form to make an evaluation, and the ones already made. */
+/** `/eval`: the form to make an evaluation and send it, and the ones already made. */
 function EvalList(): React.JSX.Element {
 
     const [rows, setRows] = useState<EvalRow[]>([]);
@@ -132,7 +154,36 @@ function EvalList(): React.JSX.Element {
     const [making, setMaking] = useState(false);
     const [formProblem, setFormProblem] = useState<string | undefined>();
 
+    /** The message to all, and the saved task it was filled from. Empty task: none - the message is sent as typed. */
+    const [text, setText] = useState("");
+    const [taskName, setTaskName] = useState("");
+
+    /** Made, but its message did not go: which one, and why. */
+    const [unsent, setUnsent] = useState<{ name: string; problem: string } | undefined>();
+
+    /** A task picked while the box holds the person's own words: whether its text replaces them is asked. */
+    const [replaceAsk, setReplaceAsk] = useState<EvalTask | undefined>();
+
     const options = useAiOptions();
+    const tasks = useEvalTasks();
+
+    const pickTask = (next: string) => {
+
+        setTaskName(next);
+        setReplaceAsk(undefined);
+
+        const picked = tasks.tasks.find(one => one.name === next);
+
+        if (!picked)
+            return;
+
+        // The task's text goes into the box, to be read and changed before it is sent - at once when the
+        // box is empty or still holds a task's own text. Words the person typed are never replaced unasked.
+        if (!text.trim() || tasks.tasks.some(one => one.text === text))
+            return setText(picked.text);
+
+        setReplaceAsk(picked);
+    };
 
     const read = useCallback(() => {
 
@@ -168,18 +219,32 @@ function EvalList(): React.JSX.Element {
 
     const nameBad = name !== "" && !EVAL_NAME.test(name);
 
+    // Something for every variant: the common message, or a text of its own each. The server names a variant left with nothing.
+    const somethingToSend = text.trim() !== "" || variants.every(one => one.extra.trim() !== "");
+
     const create = async () => {
 
         setFormProblem(undefined);
+        setUnsent(undefined);
         setMaking(true);
 
-        const answer = await bridge.request<{ eval?: EvalView }>(API.evalCreate, { name, folder: folder.trim(), variants: variants.map(askOf) });
+        const answer = await bridge.request<{ eval?: EvalView; sendProblem?: string }>(API.evalCreate, {
+            name, folder: folder.trim(), variants: variants.map(askOf), text, ...(taskName ? { task: taskName } : {})
+        });
 
         if (answer.problem || !answer.eval) {
 
             setMaking(false);
 
             return setFormProblem(answer.problem ?? "The server did not make the evaluation.");
+        }
+
+        // Made, but the message did not go: said here, where it was typed. Its page has Send to all.
+        if (answer.sendProblem) {
+
+            setMaking(false);
+
+            return setUnsent({ name: answer.eval.name, problem: answer.sendProblem });
         }
 
         location.assign(evalAddress(answer.eval.name));
@@ -194,7 +259,7 @@ function EvalList(): React.JSX.Element {
 
                 <div className="evals__row">
                     <h1>New evaluation</h1>
-                    <EvalHelp page="list" />
+                    <EvalHelp page="list" taskFolder={tasks.folder} />
                 </div>
 
                 <div className="evals__pair">
@@ -209,6 +274,40 @@ function EvalList(): React.JSX.Element {
                         <datalist id="evals-folders">{folders.map(one => <option key={one} value={one} />)}</datalist>
                     </label>
                 </div>
+
+                <div className="evals__row">
+                    <label className="evals__task">
+                        Saved task
+                        {/* Read again when opened: a task file added a moment ago is in the list. */}
+                        <select className="evals__select" value={taskName} onFocus={tasks.read} onChange={event => pickTask(event.target.value)}>
+                            <option value="">None - type your own message</option>
+                            {tasks.tasks.some(one => one.own)
+                                ? <optgroup label="Yours">{tasks.tasks.filter(one => one.own).map(one => <option key={one.name} value={one.name}>{one.title}</option>)}</optgroup>
+                                : null}
+                            <optgroup label="Built in">{tasks.tasks.filter(one => !one.own).map(one => <option key={one.name} value={one.name}>{one.title}</option>)}</optgroup>
+                        </select>
+                    </label>
+                </div>
+                {tasks.problems.map(one => <p className="evals__problem" key={one}>{one}</p>)}
+
+                {replaceAsk
+                    ? (
+                        <div className="evals__panel" role="alertdialog" aria-label="Replace your message">
+                            <p>
+                                Replace your common message with the text of <strong>{replaceAsk.title}</strong>? The task stays picked either way.
+                            </p>
+                            <div className="evals__row">
+                                <Button variant="primary" onClick={() => { setText(replaceAsk.text); setReplaceAsk(undefined); }}>Replace</Button>
+                                <Button variant="secondary" onClick={() => setReplaceAsk(undefined)}>Keep mine</Button>
+                            </div>
+                        </div>
+                    )
+                    : null}
+
+                <label className="evals__field">
+                    Common message, for every variant
+                    <textarea className="evals__text" rows={4} value={text} onChange={event => setText(event.target.value)} />
+                </label>
 
                 <h2>Variants</h2>
 
@@ -230,9 +329,17 @@ function EvalList(): React.JSX.Element {
 
                 {formProblem ? <p className="evals__problem" role="alert">{formProblem}</p> : null}
 
+                {unsent
+                    ? (
+                        <p className="evals__problem" role="alert">
+                            {unsent.name} was made, but its message was not sent: {unsent.problem} <a href={evalAddress(unsent.name)}>Open it</a> to send it again.
+                        </p>
+                    )
+                    : null}
+
                 <div className="evals__row">
-                    <Button variant="primary" disabled={making || !name || nameBad || !folder.trim() || !variants.length} onClick={() => void create()}>
-                        {making ? "Making the copies…" : "Create evaluation"}
+                    <Button variant="primary" disabled={making || !name || nameBad || !folder.trim() || !variants.length || !somethingToSend} onClick={() => void create()}>
+                        {making ? "Making the copies and sending…" : "Create and send"}
                     </Button>
                 </div>
 
@@ -260,9 +367,9 @@ function EvalList(): React.JSX.Element {
 }
 
 /**
- * The form under the bar: a new variant, or a copy of one. Once there, a
- * variant's runtime, model, mode and effort are picked at the foot of its
- * own column, and its own text is typed there.
+ * The form under the bar: a new variant, or a copy of one - its setup and
+ * its own text. A variant's setup and text are given only here or on the
+ * create form, never in its column.
  */
 interface VariantForm {
 
@@ -274,17 +381,21 @@ interface VariantForm {
     of?: string;
 }
 
-/** `/eval/<name>`: the message box for all variants and one column per variant, or the report. */
+/** `/eval/<name>`: the message it was sent and one column per variant, or the report. Nothing is typed here. */
 function EvalOne({ name }: { name: string }): React.JSX.Element {
 
     const [shown, setShown] = useState<EvalView | undefined>();
     const [loaded, setLoaded] = useState(false);
     const [problem, setProblem] = useState<string | undefined>();
-    const [text, setText] = useState("");
-    const [sendProblem, setSendProblem] = useState<string | undefined>();
+
+    /** Why the last Send or Stop did not go. */
+    const [actionProblem, setActionProblem] = useState<string | undefined>();
 
     /** A send is on its way: the button is off until the variants say they work. */
     const [sending, setSending] = useState(false);
+
+    /** Variants whose Stop was pressed and that still work: their Stop is off. */
+    const [stopping, setStopping] = useState<string[]>([]);
 
     /** What the address asks to show: the columns, one column, or the report. */
     const [view, setView] = useState<EvalShown>(() => evalShownOfAddress(location.search));
@@ -299,38 +410,8 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
     /** Remove one variant: asked, or on its way. */
     const [removing, setRemoving] = useState<{ variant: string; running: boolean; problem?: string } | undefined>();
 
-    /** The saved tasks, where own ones go, and the own files that could not be read. */
-    const [tasks, setTasks] = useState<{ tasks: EvalTask[]; folder: string; problems: string[] }>({ tasks: [], folder: "", problems: [] });
-
-    /** The saved task the message box was filled from. Empty: none - the message is sent as typed. */
-    const [taskName, setTaskName] = useState("");
-
     const options = useAiOptions();
-
-    const readTasks = useCallback(() => {
-
-        void bridge.request<{ tasks?: EvalTask[]; folder?: string; problems?: string[] }>(API.evalTasks, {}).then(answer => {
-
-            if (!answer.problem)
-                setTasks({ tasks: answer.tasks ?? [], folder: answer.folder ?? "", problems: answer.problems ?? [] });
-        });
-
-    }, []);
-
-    useEffect(readTasks, [readTasks]);
-
-    const task = tasks.tasks.find(one => one.name === taskName);
-
-    const pickTask = (next: string) => {
-
-        setTaskName(next);
-
-        const picked = tasks.tasks.find(one => one.name === next);
-
-        // The task's text goes into the box, to be read and changed before it is sent.
-        if (picked)
-            setText(picked.text);
-    };
+    const tasks = useEvalTasks();
 
     const read = useCallback((changed?: string) => {
 
@@ -370,6 +451,13 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
 
     const working = shown?.variants.filter(one => one.working).length ?? 0;
 
+    // A variant that stopped working is no longer stopping.
+    useEffect(() => {
+
+        setStopping(current => current.filter(name => shown?.variants.some(one => one.name === name && one.working)));
+
+    }, [shown]);
+
     // A variant's "working" comes a moment after the send: until then the button stays off.
     useEffect(() => {
 
@@ -378,22 +466,21 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
 
     }, [working]);
 
-    /** `onlyNew`: only to the variants that never got a message. */
+    /** The kept message - nothing is typed here. `onlyNew`: only to the variants that never got a message. */
     const send = async (onlyNew = false) => {
 
-        setSendProblem(undefined);
+        setActionProblem(undefined);
         setSending(true);
 
-        const answer = await bridge.request(API.evalSend, { name, text, ...(task ? { task: task.name } : {}), ...(onlyNew ? { onlyNew: true } : {}) });
+        const answer = await bridge.request(API.evalSend, { name, ...(onlyNew ? { onlyNew: true } : {}) });
 
         if (answer.problem) {
 
             setSending(false);
 
-            return setSendProblem(answer.problem);
+            return setActionProblem(answer.problem);
         }
 
-        // The box keeps the message: the evaluation now holds it, and shows it locked.
         read();
 
         // The variants answer with "working" on their own; this is for one that never starts.
@@ -447,17 +534,19 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
             show({});
     };
 
-    /** A variant's own text goes; it then gets the common message alone. Its column's box is emptied too. */
-    const clearText = async (variant: EvalVariantView) => {
+    /** Stop in a column's head: that variant's turn ends. */
+    const stop = async (variant: EvalVariantView) => {
 
-        setSendProblem(undefined);
+        setActionProblem(undefined);
+        setStopping(current => [...current, variant.name]);
 
-        const answer = await bridge.request<{ eval?: EvalView }>(API.evalVariantChange, { name, variant: askOf({ ...draftOf(variant, variant.name), extra: "" }) });
+        const answer = await bridge.request(API.evalStop, { name, variant: variant.name });
 
-        if (answer.problem || !answer.eval)
-            return setSendProblem(answer.problem ?? "The server did not clear the text.");
+        if (answer.problem) {
 
-        setShown(answer.eval);
+            setStopping(current => current.filter(one => one !== variant.name));
+            setActionProblem(answer.problem);
+        }
     };
 
     const remove = async () => {
@@ -493,18 +582,19 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
 
     const count = shown.variants.length;
 
-    // A variant gets one message, ever. Send to all goes while none got one; after that, Send to new variants, to the ones added later.
+    // A variant gets one message, ever. It goes when the evaluation is made; Send to all only when that did not go,
+    // and Send to new variants to the ones added later.
     const freshOnes = shown.variants.filter(one => !one.started && !one.working);
     const fresh = freshOnes.length;
     const anyStarted = fresh < count;
 
-    // The message to all, kept from the first send: shown as it was, and locked.
+    // The message to all, kept with the evaluation: shown as it was typed. Older evaluations may have none.
     const kept = shown.sent;
-    const boxText = kept ? kept.text : text;
+    const keptText = kept?.text ?? "";
     const keptTask = kept?.task ? tasks.tasks.find(one => one.name === kept.task) : undefined;
 
-    // Something to send: the common text, or a variant's own. The server names a variant left with nothing.
-    const canSend = !sending && fresh > 0 && (boxText.trim() !== "" || freshOnes.some(one => one.extra || one.own));
+    // Something to send: the kept common text, or a variant's own. The server names a variant left with nothing.
+    const canSend = !sending && fresh > 0 && (keptText.trim() !== "" || freshOnes.some(one => one.extra));
     const full = shown.variants.length < EVAL_VARIANTS_MAX ? undefined : `An evaluation holds up to ${EVAL_VARIANTS_MAX} variants.`;
 
     // One column alone: only when the address names a variant that is there.
@@ -603,56 +693,30 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
             <div className="evals__live" hidden={view.report === true}>
 
                 <div className="evals__all">
-                    <div className="evals__row">
-                        <label className="evals__task">
-                            Saved task
-                            {/* Read again when opened: a task file added a moment ago is in the list. */}
-                            <select className="evals__select" value={kept ? kept.task ?? "" : taskName} disabled={kept !== undefined} onFocus={readTasks} onChange={event => pickTask(event.target.value)}>
-                                <option value="">None - type your own message</option>
-                                {/* A kept task whose file is gone: its name still shows. */}
-                                {kept?.task && !keptTask ? <option value={kept.task}>{kept.task}</option> : null}
-                                {tasks.tasks.some(one => one.own)
-                                    ? <optgroup label="Yours">{tasks.tasks.filter(one => one.own).map(one => <option key={one.name} value={one.name}>{one.title}</option>)}</optgroup>
-                                    : null}
-                                <optgroup label="Built in">{tasks.tasks.filter(one => !one.own).map(one => <option key={one.name} value={one.name}>{one.title}</option>)}</optgroup>
-                            </select>
-                        </label>
-                    </div>
-                    {tasks.problems.map(one => <p className="evals__problem" key={one}>{one}</p>)}
+                    {kept?.task ? <p className="evals__note">Saved task: {keptTask?.title ?? kept.task}</p> : null}
                     <div className="evals__all-row">
                         <label className="evals__field">
-                            {kept ? "Common message - sent, kept as it was" : "Common message, for every variant"}
+                            Common message, as it was sent to every variant
                             <textarea
                                 className="evals__text"
                                 rows={2}
-                                value={boxText}
-                                readOnly={kept !== undefined}
-                                onChange={event => setText(event.target.value)}
-                                onKeyDown={event => {
-
-                                    if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && canSend) {
-
-                                        event.preventDefault();
-
-                                        void send(anyStarted);
-                                    }
-                                }} />
+                                value={keptText}
+                                readOnly
+                                placeholder={kept ? "Empty: each variant got only its own text." : "None: this evaluation was made before the message was typed with it. Each variant gets only its own text."} />
                         </label>
-                        {!anyStarted
+                        {fresh > 0
                             ? (
-                                <Button variant="primary" disabled={!canSend} onClick={() => void send()}>
-                                    Send to all {count}
+                                <Button
+                                    variant="primary"
+                                    disabled={!canSend}
+                                    title={anyStarted ? "Only to the variants that have not had their message yet. The others are left alone." : "The message did not go when the evaluation was made. This sends it now."}
+                                    onClick={() => void send(anyStarted)}>
+                                    {anyStarted ? `Send to new variants ${fresh}` : `Send to all ${count}`}
                                 </Button>
                             )
-                            : fresh > 0
-                                ? (
-                                    <Button variant="primary" disabled={!canSend} title="Only to the variants that have not had their message yet. The others are left alone." onClick={() => void send(true)}>
-                                        Send to new variants {fresh}
-                                    </Button>
-                                )
-                                : null}
+                            : null}
                     </div>
-                    {sendProblem ? <p className="evals__problem" role="alert">{sendProblem}</p> : null}
+                    {actionProblem ? <p className="evals__problem" role="alert">{actionProblem}</p> : null}
                     {working > 0 ? <p className="evals__note">{working} of {count} still working.</p> : null}
                 </div>
 
@@ -665,24 +729,24 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
                                     <span className={variant.working ? "evals__state evals__state--working" : "evals__state"}>{variant.working ? "Working" : variant.started ? "Done" : "Not started"}</span>
                                 </div>
                                 <div className="evals__column-line">
-                                    <span className="evals__column-ai" title={[setupLine(variant), ...(variant.own ? [`Own message, in place of the common one:\n${variant.own}`] : []), ...(variant.extra ? [`Own text:\n${variant.extra}`] : [])].join("\n\n")}>
-                                        {setupLine(variant)}{variant.own || variant.extra ? " · own text" : ""}
+                                    <span className="evals__column-ai" title={[setupLine(variant), ...(variant.extra ? [`Own text:\n${variant.extra}`] : [])].join("\n\n")}>
+                                        {setupLine(variant)}{variant.extra ? " · own text" : ""}
                                     </span>
                                     <span style={{ flex: 1 }} />
-                                    {variant.started || variant.working ? <span className="evals__column-lock">Setup locked</span> : null}
+                                    {variant.working
+                                        ? (
+                                            <Button size="xs" fill="ghost" variant="secondary" disabled={stopping.includes(variant.name)} title="End this variant's turn." onClick={() => void stop(variant)}>
+                                                {stopping.includes(variant.name) ? "Stopping…" : "Stop"}
+                                            </Button>
+                                        )
+                                        : null}
                                     {variant.started || variant.working
                                         ? (
-                                            <Button size="xs" fill="ghost" variant="secondary" disabled={full !== undefined} title={full ?? "Make a new variant with this setup, to change one thing and compare. This variant stays as it is."} onClick={() => openForm({ kind: "copy", of: variant.name, draft: draftOf(variant, copyName(variant)) })}>
+                                            <Button size="xs" fill="ghost" variant="secondary" disabled={full !== undefined} title={full ?? "Make a new variant with this setup and own text, to change one thing and compare. This variant stays as it is."} onClick={() => openForm({ kind: "copy", of: variant.name, draft: draftOf(variant, copyName(variant)) })}>
                                                 Copy as new variant
                                             </Button>
                                         )
-                                        : variant.extra || variant.own
-                                            ? (
-                                                <Button size="xs" fill="ghost" variant="secondary" title="Remove this variant's own text: it then gets the common message alone." onClick={() => void clearText(variant)}>
-                                                    Clear text
-                                                </Button>
-                                            )
-                                            : null}
+                                        : null}
                                     {count > 1 && !variant.working
                                         ? (
                                             <Button size="xs" fill="ghost" variant="secondary" title="Remove this variant: its copy, chat and numbers." onClick={() => { setForm(undefined); setDeleting(undefined); setRemoving({ variant: variant.name, running: false }); }}>

@@ -21,6 +21,14 @@ export interface ChatSurface {
     post(message: ToChatView): void;
 }
 
+/**
+ * The line kinds an unattended chat writes when a turn did not end by
+ * itself: the person pressed Stop, or the turn failed. The Evaluator's
+ * report reads them. The thread does not draw them.
+ */
+export const TURN_STOPPED = "turn.stopped";
+export const TURN_FAILED = "turn.failed";
+
 /** What a chat tells its host about as it happens - see `ChatHost.notify`. */
 export type ChatNotice =
 
@@ -127,28 +135,10 @@ export interface ChatHost {
      * Nobody answers this chat's agent - a variant of an evaluation. Its
      * turns run as unattended ones: the agent is told nobody is there and
      * gets no question tool. It has no Permissions picker, and its
-     * runtime and model can be picked only until its first message.
+     * runtime and model are never picked in it: they are set when the
+     * variant is made.
      */
     unattended?(): boolean;
-
-    /**
-     * The compose box's picker was used: the chat's runtime, model, mode
-     * and effort are `pick` now (nothing: back to the default). Already
-     * saved under the chat's own key; a host that keeps the setup
-     * somewhere else too hears it here.
-     */
-    picked?(pick: { provider: string; model?: string; mode?: string; effort?: string } | undefined): Promise<void>;
-
-    /**
-     * An evaluation's variant: the compose box's text, to save as the
-     * variant's own text - see the `variantText` message. Gives back what
-     * the box should hold now: the saved text, or the typed text when it
-     * could not be saved. Only a variant's host has it.
-     */
-    variantText?(text: string): Promise<string>;
-
-    /** An evaluation's variant: the text saved for it, put back in its box when the column is drawn. */
-    variantDraft?(): string | undefined;
 
     /** A message typed in the compose box was sent - a phase chat is marked for the session list's Recent. */
     typedIn?(): void;
@@ -245,6 +235,14 @@ export interface ChatHost {
      * address says it is gone.
      */
     deleted(chatId: string): void;
+
+    /**
+     * The chat on screen was deleted. When it is in a workspace, its tab
+     * goes to that workspace's page and stops showing this chat. No such
+     * workspace, or no host that can: nothing happens, and a new chat
+     * takes its place on screen.
+     */
+    leaveDeleted?(): void;
 
     /**
      * A chat's file was copied to a new chat - going back to an earlier

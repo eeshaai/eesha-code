@@ -11,21 +11,13 @@ import { applyFontSize, applyTheme } from "./theme";
  * `/?chat=<id>&column=1`.
  *
  * It is the same chat pane a session's page shows, on its own line to
- * the server, so the thread, the tool rows and the message box are the
- * ones every session has. What a session's page has around the chat is
- * left out: no header, no session list, no side panels, no editor. So a
- * file link or a diff clicked in the thread opens nothing here.
+ * the server, so the thread and the tool rows are the ones every session
+ * has. It only shows the run: no message box, no pickers - the variant's
+ * message and setup were given when it was made. What a session's page
+ * has around the chat is left out too: no header, no session list, no
+ * side panels, no editor. So a file link or a diff clicked in the thread
+ * opens nothing here.
  */
-
-/**
- * What the column's message box says. A variant gets one message, sent
- * with Send to all at the top: the common message, and under it what
- * was saved here. Its runtime and model are picked here too.
- */
-const VARIANT_BOX = {
-    placeholder: "This variant's own text, added under the common message - Enter saves it. Send to all at the top sends.",
-    locked: "This variant got its one message."
-};
 
 /** How long a notice from the server stays on the column. */
 const NOTE_MS = 8000;
@@ -88,7 +80,7 @@ export default function EvalColumn(): React.JSX.Element {
         <div className="evals-column">
             {note ? <div className="evals-column__note" role="status">{note}</div> : null}
             <PopoverDefaults compactBelow={false}>
-                <ChatPane emptyText="Nothing sent yet." side={{}} variantBox={VARIANT_BOX} />
+                <ChatPane emptyText="Nothing sent yet." side={{}} variant />
             </PopoverDefaults>
         </div>
     );

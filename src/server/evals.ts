@@ -53,9 +53,6 @@ export interface EvalVariant {
     /** Text sent to this variant only, under the message to all. */
     extra?: string;
 
-    /** This variant's own message: sent instead of the message to all. Its extra text still goes under it. */
-    own?: string;
-
     /** Written when its one message was sent: when, and the runtime's version then, when it said. */
     ran?: { at: number; version?: string };
 
@@ -81,10 +78,15 @@ export interface SavedEval {
     variants: EvalVariant[];
 
     /**
-     * The message to all, as typed, and the saved task it came from -
-     * kept from the first send. A variant added later gets exactly this.
+     * The message to all, as typed when the evaluation was made, the
+     * saved task it came from, and that task's closing lines as they were
+     * then ("" for a task with no kind). Every variant gets exactly this -
+     * one added later too, whatever became of the task file since.
+     * Evaluations made before it was typed there have it from their first
+     * send, or not at all. Older ones have no `closing`: their task's
+     * lines are read from the task when they send.
      */
-    sent?: { text: string; task?: string; at: number };
+    sent?: { text: string; task?: string; closing?: string; at: number };
 
     /** The person's own pick and note. The Evaluator never picks. */
     pick?: EvalPick;
@@ -127,12 +129,15 @@ export function evalScratchDir(name: string, variant: string): string {
 
 function variantOf(value: unknown): EvalVariant | undefined {
 
-    const one = value as Partial<EvalVariant> | null | undefined;
+    // `own`: a text older evaluations sent in place of the message to all. It is read as the variant's own text now, under the message to all.
+    const one = value as (Partial<EvalVariant> & { own?: unknown }) | null | undefined;
 
     if (!one || !isEvalName(one.name) || typeof one.chatId !== "string" || !one.chatId
         || typeof one.provider !== "string" || !one.provider
         || typeof one.folder !== "string" || !path.isAbsolute(one.folder))
         return undefined;
+
+    const extra = [one.own, one.extra].filter((part): part is string => typeof part === "string" && part.trim() !== "").join("\n\n");
 
     return {
         name: one.name,
@@ -141,8 +146,7 @@ function variantOf(value: unknown): EvalVariant | undefined {
         ...(typeof one.model === "string" && one.model ? { model: one.model } : {}),
         ...(typeof one.mode === "string" && one.mode ? { mode: one.mode } : {}),
         ...(typeof one.effort === "string" && one.effort ? { effort: one.effort } : {}),
-        ...(typeof one.extra === "string" && one.extra ? { extra: one.extra.slice(0, EVAL_TEXT_MAX) } : {}),
-        ...(typeof one.own === "string" && one.own ? { own: one.own.slice(0, EVAL_TEXT_MAX) } : {}),
+        ...(extra ? { extra: extra.slice(0, EVAL_TEXT_MAX) } : {}),
         ...(one.ran && typeof one.ran.at === "number"
             ? { ran: { at: one.ran.at, ...(typeof one.ran.version === "string" && one.ran.version ? { version: one.ran.version.slice(0, 80) } : {}) } }
             : {}),
@@ -174,7 +178,14 @@ export function readEval(name: string): SavedEval | undefined {
         ...(start && typeof start.commit === "string" && typeof start.ref === "string" && typeof start.root === "string" ? { start } : {}),
         variants,
         ...(sent && typeof sent.text === "string"
-            ? { sent: { text: sent.text, ...(typeof sent.task === "string" && sent.task ? { task: sent.task } : {}), at: typeof sent.at === "number" ? sent.at : 0 } }
+            ? {
+                sent: {
+                    text: sent.text,
+                    ...(typeof sent.task === "string" && sent.task ? { task: sent.task } : {}),
+                    ...(typeof sent.closing === "string" ? { closing: sent.closing } : {}),
+                    at: typeof sent.at === "number" ? sent.at : 0
+                }
+            }
             : {}),
 
         // A pick of a variant that is not there any more is kept as a note alone.
@@ -237,12 +248,11 @@ export function evalOfChat(chatId: string): { saved: SavedEval; variant: EvalVar
 /**
  * What a variant's message is: the common message, then a blank line,
  * then the variant's own text (`extra`). Either can be empty; empty
- * both, nothing. `own`, from evaluations made before this rule, replaces
- * the common message.
+ * both, nothing.
  */
-export function variantMessage(common: string, variant: Pick<EvalVariant, "extra" | "own">): string {
+export function variantMessage(common: string, variant: Pick<EvalVariant, "extra">): string {
 
-    return [variant.own?.trim() || common.trim(), variant.extra?.trim() ?? ""].filter(part => part).join("\n\n");
+    return [common.trim(), variant.extra?.trim() ?? ""].filter(part => part).join("\n\n");
 }
 
 /** The git settings that decide how a checkout writes files - copied from the source repository into each copy. */
@@ -304,12 +314,38 @@ export async function saveStart(name: string, folder: string): Promise<SavedEval
 }
 
 /**
+ * Copies a folder not in git, every file. On Windows robocopy does it,
+ * several files at a time - more than twice as fast as Node's copy on a
+ * folder of a few hundred files. Links stay links, as Node's copy keeps them.
+ */
+function copyFolder(from: string, to: string): Promise<void> {
+
+    if (process.platform !== "win32")
+        return fs.promises.cp(from, to, { recursive: true });
+
+    return new Promise((resolve, reject) => {
+
+        execFile("robocopy", [from, to, "/E", "/MT:16", "/SL", "/SJ", "/R:0", "/W:0", "/NFL", "/NDL", "/NJH", "/NJS", "/NP"], { windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => {
+
+            // Robocopy's codes 0 to 7 all mean the copy is done; 8 and up mean some files were not copied.
+            const code = error && typeof error.code === "number" ? error.code : error ? 16 : 0;
+
+            if (code >= 8)
+                reject(new Error(`robocopy could not copy the folder (code ${code}). ${String(stdout).trim().slice(0, 600)}`));
+            else
+                resolve();
+        });
+    });
+}
+
+/**
  * Makes one variant's copy and says which folder in it the agent works
- * in. In git: a new repository at `target` holding the starting commit,
- * checked out on a branch named `evaluation`, with no remote - so the
- * variant can neither push nor touch the source repository's branches.
- * The agent works in the same folder of the copy as the one picked in
- * the source. Outside git: a plain copy of the folder.
+ * in. In git: a new repository at `target` holding the starting commit
+ * alone - no older history, so it is quick to make - checked out on a
+ * branch named `evaluation`, with no remote - so the variant can neither
+ * push nor touch the source repository's branches. The agent works in
+ * the same folder of the copy as the one picked in the source. Outside
+ * git: a plain copy of the folder.
  */
 export async function makeCopy(saved: Pick<SavedEval, "folder" | "start">, target: string): Promise<string> {
 
@@ -322,7 +358,7 @@ export async function makeCopy(saved: Pick<SavedEval, "folder" | "start">, targe
 
     if (!start) {
 
-        await fs.promises.cp(saved.folder, target, { recursive: true });
+        await copyFolder(saved.folder, target);
 
         return target;
     }
@@ -342,8 +378,9 @@ export async function makeCopy(saved: Pick<SavedEval, "folder" | "start">, targe
             await git(target, ["config", key, value]);
     }
 
-    // By path, so no remote is ever written into the copy.
-    await git(target, ["fetch", "--quiet", "--no-tags", start.root, start.ref]);
+    // By path, so no remote is ever written into the copy. The starting
+    // commit alone, without the history before it.
+    await git(target, ["fetch", "--quiet", "--no-tags", "--depth", "1", start.root, start.ref]);
     await git(target, ["checkout", "--quiet", "-b", "evaluation", "FETCH_HEAD"]);
 
     return path.join(target, path.relative(start.root, path.resolve(saved.folder)));

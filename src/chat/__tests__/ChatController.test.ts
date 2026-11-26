@@ -12,7 +12,7 @@ import type { PluginHost } from "../../core/plugins/PluginHost";
 import type { SavedAnswer } from "../../core/models/permissionCard";
 import type { ToChatHost, ToChatView } from "../../shared/chatMessages";
 import type { AiPick } from "../../sdd/config/sddConfig";
-import type { ChatHost, ChatNotice, PhaseOwner } from "../chatHost";
+import { type ChatHost, type ChatNotice, type PhaseOwner, TURN_FAILED, TURN_STOPPED } from "../chatHost";
 import { APPLIED_PREFIX, ChatController, PICK_PREFIX } from "../ChatController";
 
 /*
@@ -643,23 +643,23 @@ describe("a settings change", () => {
         expect(sent).toContain("aiChoice");
     });
 
-    // An evaluation's variant: its box's text is saved by the host, never sent, and put back in the box.
-    it("hands a variant's text to the host and puts what it kept back in the box", async () => {
+    // An evaluation's variant: its setup is given when it is made, never picked in its column.
+    it("keeps a variant's setup: a pick that still arrives changes nothing", async () => {
 
-        const { host } = fakeHost();
-        const saved: string[] = [];
+        const { host, values } = fakeHost();
 
-        host.variantText = async text => { saved.push(text); return text.trim(); };
+        host.unattended = () => true;
+        values.set(PICK_PREFIX + "chat-1", { provider: "claude" });
 
         const { chat, posted } = chatOn(host);
+        const before = posted.length;
 
-        chat.receive({ type: "variantText", text: " Use a map. " });
+        chat.receive({ type: "setAiChoice", pick: { provider: "ghcp" } });
 
-        await until(() => posted.some(one => one.type === "refill"));
+        await until(() => posted.slice(before).some(one => one.type === "aiChoice"));
 
-        expect(saved).toEqual([" Use a map. "]);
-        expect(posted.find(one => one.type === "refill")).toEqual({ type: "refill", text: "Use a map.", files: [] });
-        expect(posted.some(one => one.type === "log" && one.meta?.kind === "prompt")).toBe(false);
+        expect(values.get(PICK_PREFIX + "chat-1")).toEqual({ provider: "claude" });
+        expect(posted.slice(before).find(one => one.type === "aiChoice")).toMatchObject({ locked: true });
     });
 });
 
@@ -916,6 +916,68 @@ describe("notices for the host", () => {
         expect(notices).toEqual([]);
     });
 
+    // An evaluation's variant: the report reads from its chat file how a turn ended.
+    it("writes down a variant's turn that was stopped or failed, and nothing of the kind for a normal chat", async () => {
+
+        const kinds = (posted: ToChatView[]) =>
+            posted.flatMap(one => one.type === "log" && one.meta?.kind?.startsWith("turn.") ? [one.meta.kind] : []);
+
+        const { host } = noticed();
+
+        host.unattended = () => true;
+
+        const variant = chatOn(host);
+
+        // Stopped.
+        const stopped = nextTurn("s1");
+
+        variant.send("one");
+        await until(() => stopped.call() !== undefined);
+
+        variant.chat.receive({ type: "cancel" });
+        await settle();
+
+        stopped.finish(false);
+        await until(() => kinds(variant.posted).length === 1);
+
+        // Failed.
+        const failed = nextTurn("s1");
+
+        variant.send("two");
+        await until(() => failed.call() !== undefined);
+
+        failed.finish(false);
+        await until(() => kinds(variant.posted).length === 2);
+
+        // Done: nothing written.
+        const done = nextTurn("s1");
+
+        variant.send("three");
+        await until(() => done.call() !== undefined);
+
+        done.finish();
+        await until(() => variant.posted.filter(one => one.type === "busy" && !one.running).length === 3);
+        await settle();
+
+        expect(kinds(variant.posted)).toEqual([TURN_STOPPED, TURN_FAILED]);
+
+        // A normal chat: a stopped turn writes nothing of the kind.
+        const normal = chatOn(noticed().host, "chat-2");
+        const turn = nextTurn("s2");
+
+        normal.send("one");
+        await until(() => turn.call() !== undefined);
+
+        normal.chat.receive({ type: "cancel" });
+        await settle();
+
+        turn.finish(false);
+        await until(() => normal.posted.some(one => one.type === "busy" && !one.running));
+        await settle();
+
+        expect(kinds(normal.posted)).toEqual([]);
+    });
+
     it("tells the host each question the agent asks, with its text", async () => {
 
         const { host, notices } = noticed();
@@ -1138,6 +1200,76 @@ describe("deleting a chat", () => {
 
         expect(deleted).toEqual([]);
     });
+
+    /** A chat file with nothing in it, for the chat on screen. */
+    function emptyFile(chatId: string): string {
+
+        const file = chatEventsPath(workspace, chatId);
+
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, "");
+
+        return file;
+    }
+
+    it("on screen: asks the host to send the tab to the workspace page once the file is gone, and moves on to a new chat", async () => {
+
+        const { host } = fakeHost();
+        const file = emptyFile("chat-old");
+        const goneWhenLeft: boolean[] = [];
+
+        host.leaveDeleted = () => { goneWhenLeft.push(!fs.existsSync(file)); };
+
+        const { chat, posted } = chatOn(host, "chat-old");
+
+        chat.receive({ type: "deleteChat", chatId: "chat-old" });
+
+        // The list is sent last.
+        await until(() => posted.some(one => one.type === "history"));
+
+        expect(goneWhenLeft).toEqual([true]);
+        expect(chat.chatId).not.toBe("chat-old");
+
+        // Nothing was written into the deleted file afterwards.
+        expect(fs.existsSync(file)).toBe(false);
+    });
+
+    it("on screen, with a host that cannot send the tab anywhere: a new chat takes its place on screen", async () => {
+
+        const { host } = fakeHost();
+
+        emptyFile("chat-old");
+
+        const { chat, posted } = chatOn(host, "chat-old");
+
+        chat.receive({ type: "deleteChat", chatId: "chat-old" });
+
+        await until(() => posted.some(one => one.type === "history"));
+
+        expect(posted).toContainEqual({ type: "chat", chatId: chat.chatId });
+        expect(chat.chatId).not.toBe("chat-old");
+    });
+
+    it("on screen, when the file cannot be deleted: the tab stays, and a new chat says why", async () => {
+
+        const { host } = fakeHost();
+        let left = false;
+
+        host.leaveDeleted = () => { left = true; };
+
+        // A folder where the file should be: it cannot be removed as a file.
+        fs.mkdirSync(chatEventsPath(workspace, "chat-old"), { recursive: true });
+
+        const { chat, posted, logs } = chatOn(host, "chat-old");
+
+        chat.receive({ type: "deleteChat", chatId: "chat-old" });
+
+        await until(() => logs().some(line => line.includes("Could not delete the session")));
+
+        expect(left).toBe(false);
+        expect(posted).toContainEqual({ type: "chat", chatId: chat.chatId });
+        expect(logs().at(-1)).toContain("Could not delete the session");
+    });
 });
 
 describe("deleting several chats at once", () => {
@@ -1219,6 +1351,23 @@ describe("deleting several chats at once", () => {
 
         expect(deleted).toEqual([]);
         expect(files.map(file => fs.existsSync(file))).toEqual([true, true]);
+    });
+
+    it("with the chat on screen among them: asks the host to send the tab to the workspace page once all are gone", async () => {
+
+        const { host } = fakeHost();
+        const files = chatFiles("chat-a", "chat-b");
+        const goneWhenLeft: boolean[][] = [];
+
+        host.leaveDeleted = () => { goneWhenLeft.push(files.map(file => !fs.existsSync(file))); };
+
+        const { chat } = chatOn(host, "chat-a");
+
+        await chat.deleteChats(["chat-a", "chat-b"], "Delete all 2 chats in 'api'?");
+
+        expect(goneWhenLeft).toEqual([[true, true]]);
+        expect(chat.chatId).not.toBe("chat-a");
+        expect(fs.existsSync(files[0])).toBe(false);
     });
 });
 

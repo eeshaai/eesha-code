@@ -3,22 +3,15 @@ import type { ChatController } from "../chat/ChatController";
 import type { ChatNotice } from "../chat/chatHost";
 import type { ChatStore } from "../chat/chatStore";
 import { isAcpRuntime } from "../chat/permissionLevels";
-import { listChats } from "../chat/chatHistory";
-import { evalDir, evalScratchDir, type EvalVariant, readEval, type SavedEval, writeEval } from "./evals";
+import { evalDir, evalScratchDir, type EvalVariant, type SavedEval } from "./evals";
 import { claudeWaits } from "./memory/claudeMemory";
 import type { SessionPlace } from "./memory/Memory";
-import { EVAL_TEXT_MAX, workspaceKey } from "./protocol";
+import { workspaceKey } from "./protocol";
 import { type HostServer, ServerChatHost } from "./ServerChatHost";
 import { sessionWorkspace } from "./workspaces";
 
 /** Told to the agent beside the memory's own lines: it can read here, never save. */
 const MEMORY_READ_ONLY = "In this session the memory can be read but not changed: memory_save and memory_delete are refused.";
-
-/** Said in the column when its text was saved. */
-const VARIANT_TEXT_SAVED = "Saved for this variant. It is added under the common message when you press Send to all.";
-
-/** Said in the column when its text cannot change any more. */
-const VARIANT_TEXT_LOCKED = "This variant got its one message. To try another text, use Copy as new variant.";
 
 /**
  * The host of one variant of an evaluation - see evals.ts.
@@ -45,7 +38,7 @@ export class EvalChatHost extends ServerChatHost {
     constructor(
         server: HostServer,
         private readonly saved: Pick<SavedEval, "name" | "folder">,
-        private variant: EvalVariant,
+        private readonly variant: EvalVariant,
         store: ChatStore
     ) {
 
@@ -140,88 +133,6 @@ export class EvalChatHost extends ServerChatHost {
     protected override sessionEnv(provider: string): Record<string, string> {
 
         return this.ownMemory() ? super.sessionEnv(provider) : {};
-    }
-
-    /**
-     * The picker at the foot of the variant's column was used, before
-     * its first message: the evaluation's own file gets the new setup,
-     * so the column's head, the report and a later copy all show it.
-     * With no pick the variant keeps the runtime it has.
-     */
-    async picked(pick: { provider: string; model?: string; mode?: string; effort?: string } | undefined): Promise<void> {
-
-        const saved = readEval(this.saved.name);
-        const variant = saved?.variants.find(one => one.chatId === this.variant.chatId);
-
-        if (!saved || !variant || !pick)
-            return;
-
-        const { model: _model, mode: _mode, effort: _effort, ...kept } = variant;
-
-        void _model; void _mode; void _effort;
-
-        const next: EvalVariant = {
-            ...kept,
-            provider: pick.provider,
-            ...(pick.model ? { model: pick.model } : {}),
-            ...(pick.mode ? { mode: pick.mode } : {}),
-            ...(pick.effort ? { effort: pick.effort } : {})
-        };
-
-        writeEval({ ...saved, variants: saved.variants.map(one => one === variant ? next : one) });
-
-        // Which memory the variant has depends on its runtime - see `ownMemory`.
-        this.variant = next;
-
-        this.server.evalChanged(this.saved.name);
-    }
-
-    /**
-     * The box at the foot of the variant's column, before its message:
-     * Enter saves the text as the variant's own text, added under the
-     * common message when Send to all is pressed. Empty clears it. Once
-     * the variant got its message nothing is saved, and the box keeps
-     * what was typed.
-     */
-    async variantText(text: string): Promise<string> {
-
-        const note = (said: string) => { if (this.chat) this.server.toPage(this.chat, { type: "eesha.note", text: said }); };
-
-        const saved = readEval(this.saved.name);
-        const variant = saved?.variants.find(one => one.chatId === this.variant.chatId);
-
-        if (!saved || !variant)
-            return text;
-
-        const started = this.chat?.working === true || listChats(evalDir(saved.name)).some(chat => chat.id === variant.chatId);
-
-        if (started) {
-
-            note(VARIANT_TEXT_LOCKED);
-
-            return text;
-        }
-
-        const kept = text.trim().slice(0, EVAL_TEXT_MAX);
-        const { extra: _extra, ...rest } = variant;
-
-        void _extra;
-
-        const next: EvalVariant = { ...rest, ...(kept ? { extra: kept } : {}) };
-
-        writeEval({ ...saved, variants: saved.variants.map(one => one === variant ? next : one) });
-
-        this.variant = next;
-        this.server.evalChanged(this.saved.name);
-
-        note(kept ? VARIANT_TEXT_SAVED : "This variant's own text is cleared.");
-
-        return kept;
-    }
-
-    variantDraft(): string | undefined {
-
-        return readEval(this.saved.name)?.variants.find(one => one.chatId === this.variant.chatId)?.extra;
     }
 
     /** Never asks, and never holds a turn back - see {@link ownMemory}. */

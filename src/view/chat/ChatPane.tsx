@@ -84,22 +84,21 @@ export function promptIndexOf(lines: readonly LogLine[], entryIds: readonly stri
  *                    the file tree marks them.
  * @param onTurnMessages Told what was asked for each turn that changed
  *                    files (see `turnMessages`) - the turn diffs show it.
- * @param variantBox  Set: an evaluation's variant. Nothing is sent from
- *                    this pane - no message, no Go back, no Compact, no
- *                    Handover: the variant gets its one message from the
- *                    Evaluator page. Before that, Enter saves the box's
- *                    text as the variant's own text (`placeholder` says
- *                    so); after it the box is off (`locked` says why).
- *                    Its pickers and Stop work.
+ * @param variant     An evaluation's variant: the pane only shows the
+ *                    run. No message box, so nothing is typed or sent
+ *                    here and no setup is picked - no Go back, no
+ *                    Compact, no Handover. The variant got its message
+ *                    and setup when it was made; Stop is in its column's
+ *                    head on the Evaluator page.
  * @param takeSend    Asked with each message before it is sent. True:
  *                    the page took it for itself (a page command such
  *                    as `>spec>new`), so nothing is drawn and nothing
  *                    goes to the agent.
  */
-export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles, onTurnMessages, variantBox, takeSend }: {
+export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles, onTurnMessages, variant, takeSend }: {
     emptyText: string;
     takeSend?(text: string): boolean;
-    variantBox?: { placeholder: string; locked: string };
+    variant?: boolean;
     side: { logs?: HTMLElement; changes?: HTMLElement; session?: HTMLElement };
     sessionExtras?: SessionExtras;
     onAgentFiles?(files: AgentFile[]): void;
@@ -360,11 +359,8 @@ export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles,
                 running={running}
                 resumable={resumable}
                 showCost={sessionCost}
-                onSend={(text, sent, tools) => {
-
-                    // A variant's text is saved, never sent - the host puts it back in the box.
-                    if (variantBox)
-                        return post({ type: "variantText", text });
+                // A variant's column has no message box: nothing is sent from it.
+                onSend={variant ? undefined : (text, sent, tools) => {
 
                     // A page command: the page acts on it, the agent never sees it.
                     if (takeSend?.(text))
@@ -380,9 +376,7 @@ export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles,
                     post({ type: "send", text, files: sent, ...(tools ? { tools } : {}) });
                 }}
                 onAnswer={(askId, answer) => post({ type: "answer", askId, answer })}
-                composeSendOff={variantBox && started ? variantBox.locked : undefined}
-                composePlaceholder={variantBox && !started ? variantBox.placeholder : undefined}
-                onGoBack={variantBox ? undefined : (turnId, text, edited) => {
+                onGoBack={variant ? undefined : (turnId, text, edited) => {
 
                     const index = promptIndexOf(lines, entries.map(entry => entry.id), turnId);
 
@@ -390,7 +384,7 @@ export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles,
                         post({ type: "goBackCheck", prompt: { index, text }, ...(edited !== undefined ? { text: edited } : {}) });
                 }}
                 onStop={() => post({ type: "cancel" })}
-                onCompact={variantBox ? undefined : () => post({ type: "compact" })}
+                onCompact={variant ? undefined : () => post({ type: "compact" })}
                 stopTitle="Stop the agent"
                 composeDraft={draft}
                 onComposeDraftChange={setDraft}
@@ -409,7 +403,7 @@ export default function ChatPane({ emptyText, side, sessionExtras, onAgentFiles,
                         onPick: pick => post({ type: "setAiChoice", pick }),
                         locked: started || ai.locked === true,
                         ...(ai.locked ? { held: true } : {}),
-                        ...(started && !variantBox
+                        ...(started && !variant
                             ? {
                                 handover: {
                                     onStart: pick => post({ type: "handover", ...pick }),

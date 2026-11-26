@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 
 import { API, type EvalReport as Report, type EvalVariantReport, type EvalView } from "../server/protocol";
 import { bridge } from "./bridge";
-import { costIn, costText, countText, type EvalTotals, findingRows, lowestOf, sizeText, timeText, totalsOf } from "./evalNumbers";
+import { comparable, costIn, costText, countText, type EvalTotals, findingRows, lowestOf, sizeText, timeText, totalsOf } from "./evalNumbers";
 import { setupLine } from "./EvalVariantFields";
 
 /*
@@ -94,7 +94,7 @@ export default function EvalReport({ shown }: { shown: EvalView }): React.JSX.El
                         </tr>
                         <tr className="evals__setup-row">
                             <th scope="row">Setup</th>
-                            {rows.map(row => <th scope="col" key={row.variant.name}>{setupLine(row.variant)}{row.variant.own || row.variant.extra ? " · own text" : ""}</th>)}
+                            {rows.map(row => <th scope="col" key={row.variant.name}>{setupLine(row.variant)}{row.variant.extra ? " · own text" : ""}</th>)}
                         </tr>
                     </thead>
                     <tbody>
@@ -159,9 +159,8 @@ function numberRows(all: readonly EvalTotals[]): { label: string; hint: string; 
         hint: row.hint,
         cells: row.cells,
 
-        // Only a variant that got a message and has finished is compared.
         lowest: row.value
-            ? lowestOf(all.map(totals => totals.turns && !totals.running ? row.value!(totals) : undefined))
+            ? lowestOf(all.map(totals => comparable(totals) ? row.value!(totals) : undefined))
             : all.map(() => false)
     }));
 }
@@ -185,6 +184,11 @@ function plainRows(all: readonly EvalTotals[]): { label: string; hint: string; c
     const sent = (totals: EvalTotals, text: string) => totals.turns ? text : dash;
 
     return [
+        {
+            label: "How it ended",
+            hint: "Finished: the agent stopped by itself. Stopped: you pressed Stop. Failed: the runtime failed, or the turn hit its time limit. A stopped or failed variant gets no green.",
+            cells: all.map(totals => sent(totals, totals.running ? "still working" : totals.ended ?? "finished"))
+        },
         {
             label: "Total time",
             value: totals => totals.ms,

@@ -504,6 +504,21 @@ body {
     }
 }
 
+// The GitHub mark at the right end of the footer: grey like the text beside
+// it, and opens Eesha Code's repository in a new tab. The icon is 1em, so
+// this font size sets its size.
+.eesha-footer-github {
+    display: inline-flex;
+    align-items: center;
+    color: inherit;
+    font-size: 1.3em;
+
+    &:hover,
+    &:focus-visible {
+        color: var(--eesha-text);
+    }
+}
+
 // What npm or the build said when it failed.
 .eesha-update-problem {
     max-height: 240px;

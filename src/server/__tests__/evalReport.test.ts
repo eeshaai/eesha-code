@@ -7,9 +7,10 @@ import * as path from "path";
 
 import { describe, expect, it } from "vitest";
 
+import { TURN_FAILED, TURN_STOPPED } from "../../chat/chatHost";
 import type { RunEvent } from "../../core/events/runEvents";
 import { folderBytes, toolKind, turnReports } from "../evalReport";
-import { costIn, costText, lowestOf, sizeText, timeText, totalsOf } from "../../web/evalNumbers";
+import { comparable, costIn, costText, lowestOf, sizeText, timeText, totalsOf } from "../../web/evalNumbers";
 
 /** A chat file's records for two turns: the first with two tool calls and a refused one, the second with none. */
 function twoTurns(): RunEvent[] {
@@ -139,6 +140,18 @@ describe("turnReports", () => {
         ]);
     });
 
+    it("says when a turn did not end by itself: stopped, or failed", () => {
+
+        const turn = (end: RunEvent[]) => turnReports([{ kind: "prompt", at: 1000, ownerId: "chat", text: "do it" }, ...end], false)[0]!;
+
+        expect(turn([{ kind: "message", at: 2000, ownerId: "chat", text: "done" }]).ended).toBeUndefined();
+        expect(turn([{ kind: TURN_STOPPED, at: 2000, ownerId: "chat", stream: "system", text: "Stopped." }]).ended).toBe("stopped");
+        expect(turn([{ kind: TURN_FAILED, at: 2000, ownerId: "chat", stream: "system", text: "The turn failed." }]).ended).toBe("failed");
+
+        // Still running: it has not ended at all.
+        expect(turnReports([{ kind: "prompt", at: 1000, ownerId: "chat", text: "do it" }, { kind: TURN_STOPPED, at: 2000, ownerId: "chat" }], true)[0]!.ended).toBeUndefined();
+    });
+
     it("has no turn for a chat nothing was sent to", () => {
 
         expect(turnReports([{ v: 1, kind: "open", at: 1 }, { kind: "error", at: 2, ownerId: "chat", text: "did not start" }], false)).toEqual([]);
@@ -177,6 +190,19 @@ describe("the report's sums", () => {
         expect(lowestOf([0, 0])).toEqual([false, false]);
         expect(lowestOf([7, undefined])).toEqual([false, false]);
         expect(lowestOf([])).toEqual([]);
+    });
+
+    it("leaves a variant that was stopped, failed, still works or got nothing out of the green marks", () => {
+
+        const one = (end: RunEvent[], working = false) =>
+            totalsOf({ turns: turnReports([{ kind: "prompt", at: 1000, ownerId: "chat", text: "do it" }, { kind: "message", at: 2000, ownerId: "chat", text: "ok" }, ...end], working) }, true);
+
+        expect(comparable(one([]))).toBe(true);
+        expect(comparable(one([{ kind: TURN_STOPPED, at: 2100, ownerId: "chat" }]))).toBe(false);
+        expect(comparable(one([{ kind: TURN_FAILED, at: 2100, ownerId: "chat" }]))).toBe(false);
+        expect(comparable(one([], true))).toBe(false);
+        expect(comparable(totalsOf({ turns: [] }, true))).toBe(false);
+        expect(one([{ kind: TURN_STOPPED, at: 2100, ownerId: "chat" }]).ended).toBe("stopped");
     });
 
     it("compares costs only in one unit", () => {

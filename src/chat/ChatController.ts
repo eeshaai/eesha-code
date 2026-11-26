@@ -26,7 +26,7 @@ import type { StageAi } from "../shared/runMessages";
 import {
     aiChoiceMessage, isAiPick, modelsOf, offeredRuntimes, providerIds, refreshModels, toolsOf
 } from "./aiChoice";
-import type { ChatHost, ChatSurface, PhaseOwner } from "./chatHost";
+import { type ChatHost, type ChatSurface, type PhaseOwner, TURN_FAILED, TURN_STOPPED } from "./chatHost";
 import { listChats } from "./chatHistory";
 import { isAcpRuntime, levelsOf, writeLevel } from "./permissionLevels";
 import { chatPick, defaultRuntimeOf, newChatId, startRuntime } from "./chatRules";
@@ -270,17 +270,6 @@ export class ChatController {
             case "send":
                 return this.sendAndSettle(message.text, message.files, message.tools);
 
-            // Saved, never sent; the box keeps the text, which the library cleared on Enter.
-            case "variantText": {
-
-                const kept = await this.host.variantText?.(message.text);
-
-                if (kept !== undefined)
-                    this.post({ type: "refill", text: kept, files: [] });
-
-                return;
-            }
-
             case "answer":
                 return this.answer(message.askId, message.answer);
 
@@ -295,31 +284,12 @@ export class ChatController {
 
             case "setAiChoice":
 
-                // An evaluation's variant keeps its setup once a message
-                // was sent to it: the picker is locked by then, and a
-                // pick that still arrives changes nothing.
+                // An evaluation's variant keeps the setup it was made
+                // with: a pick that still arrives changes nothing.
                 if (this.setupLocked())
                     return this.postAiChoice();
 
                 await this.host.store.update(PICK_PREFIX + this.chatId, message.pick);
-
-                // The picker's reset on an evaluation's variant: a variant
-                // always has a setup of its own, so the default runtime is
-                // written down as its pick. A later change of the default
-                // then does not move it.
-                if (!message.pick && this.host.unattended?.() === true) {
-
-                    const reset = await this.resolveAi().then(resolved => ({ provider: resolved.current.provider }), () => undefined);
-
-                    if (reset)
-                        await this.host.store.update(PICK_PREFIX + this.chatId, reset);
-
-                    await this.host.picked?.(reset);
-
-                    return this.postAiChoice();
-                }
-
-                await this.host.picked?.(message.pick);
 
                 return this.postAiChoice();
 
@@ -598,8 +568,9 @@ export class ChatController {
 
     /**
      * Deletes a chat's file for good, after asking. The runtime's own
-     * transcript is not touched. Deleting the chat on screen starts a
-     * new one.
+     * transcript is not touched. Deleting the chat on screen sends the
+     * tab to its workspace's page, or starts a new chat (see
+     * `replaceDeleted`).
      */
     private async deleteChat(chatId: string): Promise<void> {
 
@@ -617,9 +588,13 @@ export class ChatController {
         if (!await this.host.confirm(`Delete '${title}'? Its thread cannot be brought back.`, "Delete"))
             return;
 
-        // A new chat takes its place.
-        if (chatId === this.chatId)
-            await this.newChat();
+        const onScreen = chatId === this.chatId;
+
+        // Its runtime session ends while its file still says which one it is.
+        if (onScreen)
+            await this.letGo();
+
+        let problem: string | undefined;
 
         try {
 
@@ -627,8 +602,14 @@ export class ChatController {
 
         } catch (error) {
 
-            return this.fail(`Could not delete the session: ${(error as Error).message}`);
+            problem = (error as Error).message;
         }
+
+        if (onScreen)
+            await this.replaceDeleted(problem === undefined);
+
+        if (problem !== undefined)
+            return this.fail(`Could not delete the session: ${problem}`);
 
         this.host.deleted(chatId);
 
@@ -668,9 +649,11 @@ export class ChatController {
         if (this.refuseBusy(wanted, known))
             return;
 
-        // A new chat takes the place of the one on screen, as for one chat.
-        if (wanted.includes(this.chatId))
-            await this.newChat();
+        const onScreen = wanted.includes(this.chatId);
+
+        // Its runtime session ends while its file still says which one it is.
+        if (onScreen)
+            await this.letGo();
 
         const deleted: string[] = [];
         const failed: string[] = [];
@@ -692,6 +675,10 @@ export class ChatController {
             this.host.deleted(chatId);
         }
 
+        // As for one chat.
+        if (onScreen)
+            await this.replaceDeleted(failed.length === 0);
+
         const titles = { ...this.titles() };
 
         for (const chatId of deleted)
@@ -706,6 +693,24 @@ export class ChatController {
             this.fail(`Could not delete ${failed.length} of the ${wanted.length} sessions: ${failed[0]}`);
 
         this.postHistory();
+    }
+
+    /**
+     * The chat on screen was deleted. `clean`: everything asked was
+     * deleted - a chat in a workspace then sends its tab to the
+     * workspace's page (see `ChatHost.leaveDeleted`). Otherwise a new
+     * chat takes its place on screen, and says what could not be deleted.
+     *
+     * Either way this moves on to a new chat, so nothing is written into
+     * the deleted file again. With the tab gone it is drawn nowhere, and
+     * goes as every chat with nothing said goes.
+     */
+    private async replaceDeleted(clean: boolean): Promise<void> {
+
+        if (clean)
+            this.host.leaveDeleted?.();
+
+        await this.newChat();
     }
 
     /**
@@ -747,12 +752,6 @@ export class ChatController {
         await this.postFeatures();
 
         await this.postAiChoice();
-
-        // An evaluation's variant: the text saved for it is back in its box, until its message is sent.
-        const draft = this.host.variantDraft?.();
-
-        if (draft && !this.setupLocked())
-            this.post({ type: "refill", text: draft, files: [] });
     }
 
     /**
@@ -934,14 +933,13 @@ export class ChatController {
     }
 
     /**
-     * Whether this chat's runtime, model, mode and effort can no longer
-     * be picked: it is an evaluation's variant, and a message was sent
-     * to it. From then on its numbers are about one setup.
+     * Whether this chat's runtime, model, mode and effort cannot be
+     * picked: it is an evaluation's variant. Its setup is picked when the
+     * variant is made, and stays, so its numbers are about one setup.
      */
     private setupLocked(): boolean {
 
-        return this.host.unattended?.() === true
-            && (this.busy || this.events.read().some(event => event.kind === "prompt"));
+        return this.host.unattended?.() === true;
     }
 
     /**
@@ -984,8 +982,7 @@ export class ChatController {
         }
 
         // An evaluation's variant: nobody is asked, so it has no level to
-        // pick. Its runtime and model can be picked here until the first
-        // message is sent to it - see `setupLocked`.
+        // pick, and its runtime and model are not picked here - see `setupLocked`.
         const unattended = this.host.unattended?.() === true;
 
         const locked = owner !== undefined || this.setupLocked();
@@ -1239,10 +1236,6 @@ export class ChatController {
         this.busy = true;
         this.cancelRequested = false;
         this.post({ type: "busy", running: true });
-
-        // An evaluation's variant: its picker locks with its first message.
-        if (this.host.unattended?.() === true)
-            void this.postAiChoice();
 
         owner?.started(() => this.stop());
 
@@ -1550,6 +1543,16 @@ export class ChatController {
      * have sent a new command list.
      */
     private async endTurn(before: readonly { root: string; tree: string }[], runtime: string | undefined, succeeded: boolean): Promise<void> {
+
+        // An evaluation's variant: a turn that did not end by itself is
+        // written down, so the Evaluator's report does not compare it with
+        // the finished ones. Not drawn in the thread.
+        if (this.host.unattended?.() === true && (this.cancelRequested || !succeeded))
+            this.post({
+                type: "log", stream: "system",
+                text: this.cancelRequested ? "Stopped.\n" : "The turn failed.\n",
+                meta: { kind: this.cancelRequested ? TURN_STOPPED : TURN_FAILED }
+            });
 
         // Whatever the turn's outcome: a turn stopped halfway can
         // still have written half the files.

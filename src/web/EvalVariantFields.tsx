@@ -134,7 +134,7 @@ export default function EvalVariantFields({ draft, onChange, options, namePlaceh
                     rows={2}
                     value={draft.extra}
                     onChange={event => onChange({ extra: event.target.value })}
-                    placeholder="Empty: this variant gets the common message alone. It can also be typed later, in the box at the foot of its column." />
+                    placeholder="Empty: this variant gets the common message alone." />
             </label>
         </div>
     );

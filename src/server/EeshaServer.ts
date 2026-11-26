@@ -22,7 +22,7 @@ import { ServerChatHost, serverAiEnv, HostServer, readShown } from "./ServerChat
 import { EvalChatHost } from "./EvalChatHost";
 import { dropStart, evalCopyDir, evalDir, evalNames, evalOfChat, evalScratchDir, evalStateFile, type EvalVariant, isEvalName, makeCopy, readEval, type SavedEval, saveStart, variantMessage, writeEval } from "./evals";
 import { copyChanges, folderBytes, turnReportsOfFile } from "./evalReport";
-import { evalTasks, evalTasksDir, findingInFolder, taskMessage } from "./evalTasks";
+import { evalTasks, evalTasksDir, findingInFolder, taskClosing } from "./evalTasks";
 import { runtimeVersion } from "./runtimeVersion";
 import { FileStore } from "./fileStore";
 import { COMMAND_LIMIT, CommandRuns, findShells, type Shell } from "./commands";
@@ -198,14 +198,14 @@ export const PAGE_PATHS: ReadonlySet<string> = new Set([
 const EVAL_OPTION_LIMIT = 60;
 
 /** What a variant runs on and is sent - everything of it but its name, its session and its copy. */
-type VariantSetup = Pick<EvalVariant, "provider" | "model" | "mode" | "effort" | "extra" | "own">;
+type VariantSetup = Pick<EvalVariant, "provider" | "model" | "mode" | "effort" | "extra">;
 
 /**
- * What a variant's column may not send: each starts a turn, or changes
- * the one the variant had. A variant gets one message, from the
- * Evaluator page - a second one would spoil the comparison.
+ * What a variant's column may not send: each starts a turn, changes the
+ * one the variant had, or changes its setup. A variant gets one message
+ * and its setup on the create page - a second one would spoil the comparison.
  */
-const EVAL_COLUMN_REFUSED: ReadonlySet<string> = new Set(["send", "newChat", "compact", "handover", "goBack"]);
+const EVAL_COLUMN_REFUSED: ReadonlySet<string> = new Set(["send", "newChat", "compact", "handover", "goBack", "setAiChoice"]);
 
 /** An evaluation counted: each variant's changed files and copy size, by name, and the whole size. */
 interface EvalCount {
@@ -213,9 +213,12 @@ interface EvalCount {
     variants: Map<string, { files?: EvalFileChange[]; filesProblem?: string; bytes: number }>;
 
     bytes: number;
+
+    /** What the count was made from - see `countKey`. The same key: the count still holds. */
+    key: string;
 }
 
-const EVAL_ONE_MESSAGE = "A variant gets one message, sent with Send to all at the top. Its own box only saves its text. To try something else, use Copy as new variant.";
+const EVAL_ONE_MESSAGE = "A variant gets one message and its setup when the evaluation is made. Its column only shows the run. To try something else, use Copy as new variant.";
 
 /** One evaluation's page: `/eval/<name>`. The name is checked by the page's own request, not here. */
 const EVAL_PAGE = /^\/eval\/[A-Za-z0-9][A-Za-z0-9_-]{0,59}$/;
@@ -871,7 +874,7 @@ export class EeshaServer implements HostServer, SddServer {
                 if (!message || typeof message !== "object" || typeof message.type !== "string")
                     return sendJson(response, 400, { problem: "Not a session message." });
 
-                // An evaluation's variant gets one message, from the Evaluator page's top box - never from its column.
+                // An evaluation's variant gets its one message and its setup from the create page - never from its column.
                 if (entry.host instanceof EvalChatHost && EVAL_COLUMN_REFUSED.has(message.type)) {
 
                     const tab = this.tabOf(body.view);
@@ -1579,7 +1582,7 @@ export class EeshaServer implements HostServer, SddServer {
             case API.evalSend:
             case API.evalTasks:
             case API.evalVariantAdd:
-            case API.evalVariantChange:
+            case API.evalStop:
             case API.evalReport:
             case API.evalPick:
             case API.evalVariantRemove:
@@ -1999,7 +2002,7 @@ export class EeshaServer implements HostServer, SddServer {
 
     private evalView(saved: SavedEval): EvalView {
 
-        // A chat file with a message in it: that variant was started.
+        // A chat file with a message in it, or its send written down: that variant was started - as the send counts it.
         const started = new Set(listChats(evalDir(saved.name)).map(chat => chat.id));
 
         return {
@@ -2015,10 +2018,9 @@ export class EeshaServer implements HostServer, SddServer {
                 ...(variant.mode ? { mode: variant.mode } : {}),
                 ...(variant.effort ? { effort: variant.effort } : {}),
                 ...(variant.extra ? { extra: variant.extra } : {}),
-                ...(variant.own ? { own: variant.own } : {}),
                 ...(variant.ran?.version ? { version: variant.ran.version } : {}),
                 addedAt: variant.addedAt,
-                started: started.has(variant.chatId),
+                started: started.has(variant.chatId) || variant.ran !== undefined,
                 working: this.evalWorking(variant.chatId)
             })),
             ...(saved.sent ? { sent: saved.sent } : {}),
@@ -2080,8 +2082,8 @@ export class EeshaServer implements HostServer, SddServer {
             case API.evalVariantAdd:
                 return this.evalVariantAdd(response, saved, body);
 
-            case API.evalVariantChange:
-                return this.evalVariantChange(response, saved, body);
+            case API.evalStop:
+                return this.evalStop(response, saved, body);
 
             case API.evalReport:
                 return this.evalReport(response, saved);
@@ -2099,72 +2101,97 @@ export class EeshaServer implements HostServer, SddServer {
         return sendJson(response, 404, { problem: "Not found." });
     }
 
+    /** Send to all, or Send to new variants: the kept message - nothing is typed on the evaluation's page. */
+    private async evalSend(response: http.ServerResponse, saved: SavedEval, body: Record<string, unknown>): Promise<void> {
+
+        const sent = await this.sendToVariants(saved, body.onlyNew === true);
+
+        return sent.problem ? sendJson(response, sent.status, { problem: sent.problem }) : sendJson(response, 200, { ok: true });
+    }
+
+    /** Says which variants would get nothing: no common message, and no text of their own. */
+    private emptyVariants(text: string, variants: readonly Pick<EvalVariant, "name" | "extra">[]): string | undefined {
+
+        const empty = variants.filter(variant => !variantMessage(text, variant));
+
+        if (!empty.length)
+            return undefined;
+
+        return empty.length === variants.length
+            ? "Type a common message, or a text of its own for every variant."
+            : `Nothing to send to ${empty.map(variant => variant.name).join(", ")}: type a common message, or a text of ${empty.length === 1 ? "its" : "their"} own.`;
+    }
+
     /**
-     * Sends each variant its one message: the common message, with the
-     * variant's own text under it (either may be empty, not both). All
+     * Sends each variant its one message: the kept message to all, with
+     * the variant's own text under it (either may be empty, not both). All
      * start at the same moment, or none.
      *
      * A variant gets one message, ever - a second one would spoil the
-     * comparison. Send to all goes only while no variant got one; the
-     * message and its saved task are then kept with the evaluation.
-     * `onlyNew` (Send to new variants) sends to the variants that never
-     * got one - added later - and sends the kept message, so they get
-     * exactly what the others got.
+     * comparison. Without `onlyNew` it goes only while no variant got one:
+     * right after the evaluation is made, or with Send to all when that
+     * send did not go. `onlyNew` (Send to new variants) sends to the
+     * variants that never got one - added later - so they get exactly
+     * what the others got.
      *
      * Each runtime's version is written down first, so the report can
      * say months later what each variant ran on.
      */
-    private async evalSend(response: http.ServerResponse, saved: SavedEval, body: Record<string, unknown>): Promise<void> {
+    private async sendToVariants(saved: SavedEval, onlyNew: boolean): Promise<{ problem?: string; status: number }> {
 
         const name = saved.name;
-        const onlyNew = body.onlyNew === true;
 
-        // A chat file with a message in it, or a turn running: that variant got its message.
+        // Its send was written down, a chat file with a message in it, or a turn running: that variant got its message.
+        // The send is written down before the message goes, so a second press a moment later is refused.
         const started = new Set(listChats(evalDir(name)).map(chat => chat.id));
-        const done = (variant: EvalVariant) => started.has(variant.chatId) || this.evalWorking(variant.chatId);
+        const done = (variant: EvalVariant) => variant.ran !== undefined || started.has(variant.chatId) || this.evalWorking(variant.chatId);
 
         if (!onlyNew && saved.variants.some(done))
-            return sendJson(response, 409, { problem: "Each variant gets one message, and some already got theirs. Use Send to new variants for the ones that did not." });
+            return { status: 409, problem: "Each variant gets one message, and some already got theirs. Use Send to new variants for the ones that did not." };
 
         const targets = saved.variants.filter(variant => !done(variant));
 
         if (!targets.length)
-            return sendJson(response, 400, { problem: "Every variant already got its message. Add a variant first." });
+            return { status: 400, problem: "Every variant already got its message. Add a variant first." };
 
-        // The kept message once there is one; else what the box holds now.
-        const typed = saved.sent?.text ?? (typeof body.text === "string" ? body.text : "");
-        const taskName = saved.sent ? saved.sent.task : typeof body.task === "string" && body.task ? body.task : undefined;
+        // The message kept with the evaluation. One made before the message was typed at create may have none yet.
+        const typed = saved.sent?.text ?? "";
+        const taskName = saved.sent?.task;
 
-        // A saved task: a find or fix task gets its closing lines, which ask for the findings in one form.
-        const task = taskName !== undefined ? evalTasks().tasks.find(one => one.name === taskName) : undefined;
+        // A find or fix task's closing lines, which ask for the findings in one form: as they were when the
+        // evaluation was made. An older evaluation kept only the task's name: its lines are read from the task now.
+        let closing = saved.sent?.closing;
 
-        if (taskName !== undefined && !task)
-            return sendJson(response, 400, { problem: `There is no saved task named '${taskName}'. Pick another, or pick none.` });
+        if (closing === undefined && taskName !== undefined) {
+
+            const task = evalTasks().tasks.find(one => one.name === taskName);
+
+            if (!task)
+                return { status: 400, problem: `The saved task '${taskName}' is not there any more. Put its file back in ${evalTasksDir()}.` };
+
+            closing = taskClosing(task.kind);
+        }
+
+        const empty = this.emptyVariants(typed, targets);
+
+        if (empty)
+            return { status: 400, problem: empty };
 
         // The common message, the variant's own text under it, and a task's closing lines last of all.
-        const messageOf = (variant: EvalVariant): string | undefined => {
+        const messageOf = (variant: EvalVariant): string => {
 
             const joined = variantMessage(typed, variant);
 
-            return joined ? task ? taskMessage(joined, task.kind) : joined : undefined;
+            return closing ? `${joined}\n\n${closing}` : joined;
         };
 
-        const empty = targets.filter(variant => messageOf(variant) === undefined);
-
-        if (empty.length)
-            return sendJson(response, 400, {
-                problem: empty.length === targets.length
-                    ? "Type a message first: at the top for every variant, or in a variant's own box."
-                    : `Nothing to send to ${empty.map(variant => variant.name).join(", ")}: type a common message at the top, or a text in ${empty.length === 1 ? "its" : "their"} own box.`
-            });
-
         if (this.evalsMaking.has(name.toLowerCase()))
-            return sendJson(response, 409, { problem: "This evaluation is being changed right now. Try again in a moment." });
+            return { status: 409, problem: "This evaluation is being changed right now. Try again in a moment." };
 
         const entries = targets.map(variant => this.entryFor(variant.chatId));
 
         if (entries.some(entry => entry === undefined))
-            return sendJson(response, 500, { problem: "One of the variants could not be opened - see the server's log." });
+            return { status: 500, problem: "One of the variants could not be opened - see the server's log." };
 
         this.evalsMaking.add(name.toLowerCase());
 
@@ -2181,7 +2208,7 @@ export class EeshaServer implements HostServer, SddServer {
             writeEval({
                 ...now,
                 // Kept even when empty: the top box then stays empty and locked, as it was sent.
-                ...(now.sent ? {} : { sent: { text: typed, ...(taskName ? { task: taskName } : {}), at } }),
+                ...(now.sent ? {} : { sent: { text: typed, ...(taskName ? { task: taskName } : {}), ...(closing !== undefined ? { closing } : {}), at } }),
                 variants: now.variants.map(variant => {
 
                     if (!sentNow.includes(variant.chatId))
@@ -2199,7 +2226,7 @@ export class EeshaServer implements HostServer, SddServer {
                 if (!entry!.tab)
                     this.waitForTab(entry!);
 
-                entry!.controller.receive({ type: "send", text: messageOf(targets[index]!)! });
+                entry!.controller.receive({ type: "send", text: messageOf(targets[index]!) });
             }
 
         } finally {
@@ -2209,13 +2236,13 @@ export class EeshaServer implements HostServer, SddServer {
 
         this.evalChanged(name);
 
-        return sendJson(response, 200, { ok: true });
+        return { status: 200 };
     }
 
     /**
      * What the page asked a variant to be, checked: a runtime on offer,
-     * and one-line values. The name is checked by the caller - a new one
-     * may have none, a change names an existing one.
+     * and one-line values. The name is checked by the caller - a new
+     * variant may have none.
      */
     private checkVariantAsk(value: unknown, runtimes: readonly string[]): { ask: VariantSetup & { name?: string } } | { problem: string } {
 
@@ -2252,11 +2279,6 @@ export class EeshaServer implements HostServer, SddServer {
             return { problem: `the extra text is up to ${EVAL_TEXT_MAX} characters.` };
 
         const extra = typeof one.extra === "string" ? one.extra.trim() : "";
-
-        if (one.own !== undefined && (typeof one.own !== "string" || one.own.length > EVAL_TEXT_MAX))
-            return { problem: `its own message is up to ${EVAL_TEXT_MAX} characters.` };
-
-        const own = typeof one.own === "string" ? one.own.trim() : "";
         const name = typeof one.name === "string" && one.name.trim() ? one.name.trim() : undefined;
 
         return {
@@ -2266,13 +2288,12 @@ export class EeshaServer implements HostServer, SddServer {
                 ...(picked.pick.model ? { model: picked.pick.model } : {}),
                 ...(mode.value ? { mode: mode.value } : {}),
                 ...(effort.value ? { effort: effort.value } : {}),
-                ...(extra ? { extra } : {}),
-                ...(own ? { own } : {})
+                ...(extra ? { extra } : {})
             }
         };
     }
 
-    /** A variant's runtime, model, mode and effort, saved as if picked in its compose box. */
+    /** A variant's runtime, model, mode and effort, saved as its chat's pick - the chat runs on it. */
     private async saveVariantPick(name: string, variant: EvalVariant): Promise<void> {
 
         await this.evalStore(name).update(PICK_PREFIX + variant.chatId, {
@@ -2289,10 +2310,12 @@ export class EeshaServer implements HostServer, SddServer {
     }
 
     /**
-     * Makes an evaluation: the folder's starting point is saved, each
-     * variant gets its own copy and its setup. Nothing is sent to an
-     * agent. When any step fails, what was made is removed and the name
-     * is free again.
+     * Makes an evaluation and sends it: the folder's starting point is
+     * saved, each variant gets its own copy and its setup, the message to
+     * all is kept, and every variant gets its one message. Everything is
+     * typed on the create page; the evaluation's own page only watches.
+     * When making it fails, what was made is removed and the name is free
+     * again. When only the send fails, the evaluation stays.
      */
     private async evalCreate(response: http.ServerResponse, name: string, body: Record<string, unknown>): Promise<void> {
 
@@ -2337,35 +2360,59 @@ export class EeshaServer implements HostServer, SddServer {
             variants.push({ ...one.ask, name: variantName });
         }
 
+        // The message to all and its saved task: checked before any copy is made.
+        if (body.text !== undefined && typeof body.text !== "string")
+            return sendJson(response, 400, { problem: "The common message is text." });
+
+        const text = typeof body.text === "string" ? body.text : "";
+        const taskName = typeof body.task === "string" && body.task ? body.task : undefined;
+        const task = taskName !== undefined ? evalTasks().tasks.find(one => one.name === taskName) : undefined;
+
+        if (taskName !== undefined && !task)
+            return sendJson(response, 400, { problem: `There is no saved task named '${taskName}'. Pick another, or pick none.` });
+
+        // Kept as they are now, so a variant added months later gets these same lines.
+        const closing = task ? taskClosing(task.kind) : undefined;
+
+        const empty = this.emptyVariants(text, variants);
+
+        if (empty)
+            return sendJson(response, 400, { problem: empty });
+
         this.evalsMaking.add(name.toLowerCase());
 
         let start: SavedEval["start"];
+        let saved: SavedEval;
 
         try {
 
             start = await saveStart(name, folder);
 
             const createdAt = Date.now();
-            const made: EvalVariant[] = [];
 
-            for (const [index, one] of variants.entries())
-                made.push({
-                    ...one,
-                    chatId: newChatId(createdAt + index),
-                    folder: await makeCopy({ folder, ...(start ? { start } : {}) }, evalCopyDir(name, one.name)),
-                    addedAt: createdAt
-                });
+            // All copies at the same time. Each is waited for, also when one fails, so none is still being written when the folder is removed.
+            const copies = await Promise.allSettled(variants.map(one => makeCopy({ folder, ...(start ? { start } : {}) }, evalCopyDir(name, one.name))));
+            const failed = copies.find((one): one is PromiseRejectedResult => one.status === "rejected");
 
-            const saved: SavedEval = { name, folder, createdAt, ...(start ? { start } : {}), variants: made };
+            if (failed)
+                throw failed.reason;
+
+            const made: EvalVariant[] = variants.map((one, index) => ({
+                ...one,
+                chatId: newChatId(createdAt + index),
+                folder: (copies[index] as PromiseFulfilledResult<string>).value,
+                addedAt: createdAt
+            }));
+
+            saved = {
+                name, folder, createdAt, ...(start ? { start } : {}), variants: made,
+                sent: { text, ...(taskName ? { task: taskName } : {}), ...(closing !== undefined ? { closing } : {}), at: createdAt }
+            };
 
             writeEval(saved);
 
             for (const variant of made)
                 await this.saveVariantPick(name, variant);
-
-            this.evalChanged(name);
-
-            return sendJson(response, 200, { eval: this.evalView(saved) });
 
         } catch (error) {
 
@@ -2382,6 +2429,13 @@ export class EeshaServer implements HostServer, SddServer {
 
             this.evalsMaking.delete(name.toLowerCase());
         }
+
+        this.evalChanged(name);
+
+        // Made: now every variant gets its message. When that does not go, the evaluation stays, and its page has Send to all.
+        const sent = await this.sendToVariants(saved, false);
+
+        return sendJson(response, 200, { eval: this.evalView(readEval(name) ?? saved), ...(sent.problem ? { sendProblem: sent.problem } : {}) });
     }
 
     /**
@@ -2469,78 +2523,38 @@ export class EeshaServer implements HostServer, SddServer {
         }
     }
 
-    /**
-     * Changes a variant's setup. Only before its first message: after
-     * that its numbers are about the setup it ran on, so a change makes
-     * a new variant instead (the page's "Copy as new variant").
-     */
-    private async evalVariantChange(response: http.ServerResponse, saved: SavedEval, body: Record<string, unknown>): Promise<void> {
+    /** Stop in a variant's column head: its turn ends, as Stop ends a turn in a session. */
+    private evalStop(response: http.ServerResponse, saved: SavedEval, body: Record<string, unknown>): void {
 
-        const one = this.checkVariantAsk(body.variant, await this.evalRuntimes());
-
-        if ("problem" in one)
-            return sendJson(response, 400, { problem: `The variant: ${one.problem}` });
-
-        const variant = saved.variants.find(other => other.name === one.ask.name);
+        const variant = saved.variants.find(one => one.name === body.variant);
 
         if (!variant)
-            return sendJson(response, 404, { problem: `There is no variant named '${one.ask.name ?? ""}' in this evaluation.` });
+            return sendJson(response, 404, { problem: `There is no variant named '${typeof body.variant === "string" ? body.variant : ""}' in this evaluation.` });
 
-        if (this.evalWorking(variant.chatId) || listChats(evalDir(saved.name)).some(chat => chat.id === variant.chatId))
-            return sendJson(response, 409, { problem: `A message was sent to '${variant.name}' already, so its setup stays as it was. Use 'Copy as new variant' to try another setup.` });
+        const entry = [...this.chats].find(one => one.controller.chatId === variant.chatId);
 
-        const changed: EvalVariant = {
-            name: variant.name,
-            chatId: variant.chatId,
-            folder: variant.folder,
-            addedAt: variant.addedAt,
-            provider: one.ask.provider,
-            ...(one.ask.model ? { model: one.ask.model } : {}),
-            ...(one.ask.mode ? { mode: one.ask.mode } : {}),
-            ...(one.ask.effort ? { effort: one.ask.effort } : {}),
-            ...(one.ask.extra ? { extra: one.ask.extra } : {}),
-            ...(one.ask.own ? { own: one.ask.own } : {})
-        };
+        if (!entry || !entry.controller.working)
+            return sendJson(response, 400, { problem: `'${variant.name}' is not working.` });
 
-        const next: SavedEval = { ...saved, variants: saved.variants.map(other => other === variant ? changed : other) };
+        void entry.controller.receive({ type: "cancel" });
 
-        writeEval(next);
-
-        await this.saveVariantPick(saved.name, changed);
-
-        // A chat kept for it holds the old setup's host: the next one reads the new.
-        // The extra text and own message change nothing a kept chat holds - they are read when the message is sent.
-        const sameSetup = changed.provider === variant.provider && changed.model === variant.model
-            && changed.mode === variant.mode && changed.effort === variant.effort;
-
-        for (const entry of [...this.chats]) {
-
-            if (entry.controller.chatId !== variant.chatId)
-                continue;
-
-            if (!sameSetup)
-                await this.dropEntry(entry);
-
-            // Its column's box shows the variant's own text: changed here, it changes there too.
-            else if ((changed.extra ?? "") !== (variant.extra ?? ""))
-                entry.controller.putDraft(changed.extra ?? "");
-        }
-
-        this.evalChanged(saved.name);
-
-        return sendJson(response, 200, { eval: this.evalView(next) });
+        return sendJson(response, 200, { ok: true });
     }
 
     /**
      * Every variant's numbers, read off its chat file and its copy. The
      * changed files and sizes are counted only while no variant works:
      * counting reads every file of every copy, and would slow the
-     * variants being timed. Meanwhile the last count is shown.
+     * variants being timed. Meanwhile the last count is shown. Once all
+     * are done, the last count is shown again until a turn ran since, or
+     * a variant was added or removed.
      */
     private async evalReport(response: http.ServerResponse, saved: SavedEval): Promise<void> {
 
         const paused = saved.variants.some(variant => this.evalWorking(variant.chatId));
-        const counts = paused ? this.evalCounts.get(saved.name) : await this.countEval(saved);
+        const kept = this.evalCounts.get(saved.name);
+        const key = this.countKey(saved);
+        const counts = paused || kept?.key === key ? kept : await this.countEval(saved, key);
 
         const variants: EvalVariantReport[] = saved.variants.map(variant => {
 
@@ -2561,8 +2575,34 @@ export class EeshaServer implements HostServer, SddServer {
         return sendJson(response, 200, { report });
     }
 
+    /**
+     * What a count depends on: the variants, and when each one's chat file
+     * last changed. A turn writes to its chat file, so a count is made
+     * again after a turn ran. A copy changed by hand outside a turn is not
+     * seen until then.
+     */
+    private countKey(saved: SavedEval): string {
+
+        return saved.variants.map(variant => {
+
+            let changed = 0;
+
+            try {
+
+                changed = fs.statSync(chatEventsPath(evalDir(saved.name), variant.chatId)).mtimeMs;
+
+            } catch {
+
+                // No message yet: no chat file.
+            }
+
+            return `${variant.name}:${changed}`;
+
+        }).join("|");
+    }
+
     /** Counts each copy's changed files and size, and the whole evaluation's size - each folder once - and keeps the count. */
-    private async countEval(saved: SavedEval): Promise<EvalCount> {
+    private async countEval(saved: SavedEval, key: string): Promise<EvalCount> {
 
         const start = saved.start;
         const variants = new Map<string, { files?: EvalFileChange[]; filesProblem?: string; bytes: number }>();
@@ -2592,7 +2632,8 @@ export class EeshaServer implements HostServer, SddServer {
         // The copies are counted above; the rest of the folder, and the chats, here.
         const counted = {
             variants,
-            bytes: copies + await folderBytes(evalDir(saved.name), ["copies"]) + await folderBytes(eventsRoot(evalDir(saved.name)))
+            bytes: copies + await folderBytes(evalDir(saved.name), ["copies"]) + await folderBytes(eventsRoot(evalDir(saved.name))),
+            key
         };
 
         this.evalCounts.set(saved.name, counted);
@@ -3705,6 +3746,27 @@ export class EeshaServer implements HostServer, SddServer {
 
         if (chatId in this.marks())
             void this.setMark(chatId, null);
+    }
+
+    toWorkspacePage(chat: ChatController, workspace: string): void {
+
+        const entry = this.entryOf(chat);
+        const tab = entry?.tab;
+
+        // An Evaluator column has no page of its own to move.
+        if (!entry || !tab || tab.via || !workspaceByKey(this.store, workspace))
+            return;
+
+        this.send(tab, { type: "eesha.workspacePage", workspace });
+
+        // The page makes a new stream for the workspace page. Until the
+        // old one closes, nothing more of this chat is drawn on it.
+        entry.controller.detach(tab.surface);
+        entry.tab = undefined;
+        tab.chat = undefined;
+        tab.surface = undefined;
+
+        this.waitForTab(entry);
     }
 }
 
