@@ -7,13 +7,16 @@ import { homeDirectory } from "../../core/runner/runContext";
 import { PhaseRequest } from "./assemble";
 
 /**
- * Running one phase.
+ * Running one phase, and the one call every session makes.
  *
- * The only place SDD core calls down into the engine. SDD owns the
- * model (what a phase is, what it is handed, when it may run); the
- * engine resolves the plugin, validates its args, spawns it and masks
- * what comes back. It does not go through the walker, the TaskRunner
- * or the workflow model: a phase is one plugin call.
+ * `runPhase` turns a phase's request into a session call and hands it
+ * to the phase's chat, which runs it as one of its turns. The chat
+ * calls down into the engine through `runCall`, like every other chat
+ * turn. SDD owns the model (what a phase is, what it is handed, when
+ * it may run); the engine resolves the plugin, validates its args,
+ * spawns it and masks what comes back. It does not go through the
+ * walker, the TaskRunner or the workflow model: a turn is one plugin
+ * call.
  *
  * The `Task` built here is a call shape, not a document anybody wrote.
  * `PluginHost.execute` takes one, so the plugin does not learn that SDD
@@ -29,13 +32,6 @@ export interface RunPhaseInput {
      * compose box is the case: what the person typed, sent as typed.
      */
     prompt?: string;
-
-    /**
-     * Return once the prompt is delivered, rather than waiting for the
-     * turn to finish. Nothing is verified afterwards, because nothing
-     * has happened yet. The caller gets the session id.
-     */
-    detach?: boolean;
 
     /** Hold the session after this turn instead of disposing it - see `SessionCall.keep`. */
     keep?: boolean;
@@ -62,45 +58,17 @@ export interface RunPhaseInput {
     /** The files the session is known to work on - see `SessionCall.files`. */
     files?: string[];
 
-    /** Identifies the spec whose conversation this is - the spec folder path serves. */
-    specId: string;
-
-    /** Where the agent runs. The repository, since every path in the prompt is relative to it. */
+    /** The repository. Every path in the prompt, and in the request, is relative to it. */
     workspace: string;
 
-    /** Correlates this phase's output with the run it belongs to. */
-    runId: string;
-
-    /** The real environment, so `${{ env.NAME }}` in a plugin input resolves. */
-    processEnv?: EnvVars;
-
     /**
-     * One line of this phase's output. `meta` is the agent event behind
-     * the line, when the plugin knew; a panel drawing the conversation
-     * needs it to tell which lines are the agent talking.
-     */
-    onOutput?(text: string, stream: "stdout" | "stderr" | "system", meta?: LogMeta): void;
-
-    /**
-     * The conversation's id, the moment the plugin opens it. The same id
-     * the outcome carries, only sooner, so a panel can show the chat
-     * while the phase runs. Called at most once per phase.
-     */
-    onSession?(id: string): void;
-
-    registerKill?(kill: () => void): void;
-
-    isCancelled?(): boolean;
-
-    /**
-     * Runs the call somewhere else than here: in the phase's chat, which
-     * writes the conversation down, draws it and keeps its own stop and
-     * session id. The hooks above are then not used. `check` says why
-     * the turn failed when the plugin said it went well but the phase
+     * Runs the call in the phase's chat, which writes the conversation
+     * down, draws it and keeps its own stop and session id. `check` says
+     * why the turn failed when the plugin said it went well but the phase
      * did not - a document it was asked for is missing - so the chat can
      * say it in its thread before the turn ends.
      */
-    via?(call: SessionCall, check: (result: CallResult) => string | undefined): Promise<CallResult>;
+    via(call: SessionCall, check: (result: CallResult) => string | undefined): Promise<CallResult>;
 }
 
 /** What one session call came back with. */
@@ -181,9 +149,6 @@ export interface SessionCall {
 
     /** The plugin to run and the settings it was configured with. */
     ai: { uses: string; args: Record<string, unknown> };
-
-    /** Deliver the prompt and return, rather than waiting for the turn. */
-    detach?: boolean;
 
     /** Hold the session after this turn instead of disposing it. See `ai@1`'s `keep` arg. */
     keep?: boolean;
@@ -270,9 +235,8 @@ export interface SessionHost {
 }
 
 /**
- * The one place an SDD session is started. The waited and detached
- * kinds differ by one field, `detach`; everything else (session id,
- * kill hook, cancellation) is shared, so neither can lose one.
+ * The one place a session is started. Every call waits for its turn
+ * to end.
  */
 async function callPlugin(call: SessionCall, host: SessionHost, plugins: PluginHost) {
 
@@ -336,7 +300,6 @@ async function callPlugin(call: SessionCall, host: SessionHost, plugins: PluginH
             // Not on a verbatim send: the text is the whole instruction.
             ...(call.target && !call.verbatim ? { target: call.target } : {}),
 
-            ...(call.detach ? { detach: true } : {}),
             ...(call.keep ? { keep: true } : {}),
             ...(call.continueSession ? { continueSession: call.continueSession } : {}),
             ...(call.interactive ? { interactive: true } : {}),
@@ -379,33 +342,12 @@ async function callPlugin(call: SessionCall, host: SessionHost, plugins: PluginH
 }
 
 /**
- * Starts a session from the primitives, for a caller with no discovered
- * spec. Idea is the case: the folder was made seconds ago and the type
- * came from the picker, not from frontmatter. Everything else goes
- * through {@link runPhase}; both end up in {@link callPlugin}.
- */
-export async function startSession(
-    call: Omit<SessionCall, "detach">,
-    host: SessionHost,
-    plugins: PluginHost
-): Promise<{ success: boolean; sessionId?: string; message?: string }> {
-
-    const result = await callPlugin({ ...call, detach: true }, host, plugins);
-
-    return {
-        success: result.success,
-        sessionId: result.session?.id,
-        message: result.success ? undefined : `Could not start the ${call.session} conversation.`
-    };
-}
-
-/**
- * One waited turn from the primitives, for a caller with no spec at
- * all - the chat. Held to nothing afterwards: there is no
- * document it was asked to write.
+ * One waited turn from the primitives, for a caller with no chat - the
+ * commit message. Held to nothing afterwards: there is no document it
+ * was asked to write.
  */
 export async function runSession(
-    call: Omit<SessionCall, "detach" | "target" | "plan" | "checkPlan">,
+    call: Omit<SessionCall, "target" | "plan" | "checkPlan">,
     host: SessionHost,
     plugins: PluginHost
 ): Promise<CallResult> {
@@ -414,8 +356,9 @@ export async function runSession(
 }
 
 /**
- * One call with every field a phase may set, for the chat that runs a
- * turn SDD hands it - see `RunPhaseInput.via`.
+ * One call with every field a phase may set. Every chat turn goes
+ * through it - the ones a person types and the ones SDD hands a phase
+ * chat (see `RunPhaseInput.via`).
  */
 export async function runCall(call: SessionCall, host: SessionHost, plugins: PluginHost): Promise<CallResult> {
 
@@ -425,19 +368,17 @@ export async function runCall(call: SessionCall, host: SessionHost, plugins: Plu
 }
 
 /**
- * Runs a phase and reports what it left behind. A waited phase is held
- * to the document it was asked for; a detached one cannot be, because
- * nothing has happened yet when it returns.
+ * Runs a phase in its chat and reports what it left behind. The phase
+ * is held to the document it was asked for.
  *
- * @param exists Checked after the plugin returns, against repository-relative paths.
+ * @param exists Checked after the chat's turn ends, against repository-relative paths.
  */
 export async function runPhase(
     input: RunPhaseInput,
-    plugins: PluginHost,
     exists: (path: string) => boolean
 ): Promise<PhaseOutcome> {
 
-    const { request, specId } = input;
+    const { request } = input;
     const session = request.stage.id;
 
     const call: SessionCall = {
@@ -449,11 +390,9 @@ export async function runPhase(
         // spec name is shared by every session of that spec.
         title: `${request.stage.id} - ${label(request)}`,
 
-        // Only when something waits to check it.
-        target: input.detach ? undefined : request.targets[0],
+        target: request.targets[0],
 
         ai: request.ai,
-        detach: input.detach,
         keep: input.keep,
         continueSession: input.continueSession,
         interactive: input.interactive,
@@ -467,43 +406,22 @@ export async function runPhase(
         refuseWrites: request.refuseWrites?.map(file => path.resolve(input.workspace, file)),
 
         // The phase that writes the plan checks its own draft. Not
-        // on a verbatim send - that text is the whole instruction -
-        // and never on a detached hand-over, which reads the plan
-        // rather than writing it.
-        checkPlan: request.writesPlan && !input.detach && !input.verbatim && request.targets[0]
+        // on a verbatim send - that text is the whole instruction.
+        checkPlan: request.writesPlan && !input.verbatim && request.targets[0]
             ? path.resolve(input.workspace, request.targets[0])
             : undefined
     };
 
     // In the phase's chat: it checks the outcome before its turn ends,
     // so a missing document is said in its thread.
-    if (input.via) {
+    const ran = await input.via(call, result => {
 
-        const ran = await input.via(call, result => {
+        const checked = outcome(request, result, exists, input.verbatim);
 
-            const checked = outcome(request, result, exists, input.detach, input.verbatim);
+        return result.success && !checked.success ? checked.message : undefined;
+    });
 
-            return result.success && !checked.success ? checked.message : undefined;
-        });
-
-        return outcome(request, ran, exists, input.detach, input.verbatim);
-    }
-
-    const result = await runCall(
-        call,
-        {
-            specId,
-            workspace: input.workspace,
-            runId: input.runId,
-            processEnv: input.processEnv,
-            onOutput: input.onOutput,
-            onSession: input.onSession,
-            registerKill: input.registerKill,
-            isCancelled: input.isCancelled
-        },
-        plugins);
-
-    return outcome(request, result, exists, input.detach, input.verbatim);
+    return outcome(request, ran, exists, input.verbatim);
 }
 
 /** The spec's folder name - what a person calls this piece of work. */
@@ -520,12 +438,7 @@ function label(request: PhaseRequest): string {
  * nothing; that is what a session that talked itself out of the work
  * looks like.
  *
- * A detached phase is held to nothing: the task returned when the
- * prompt landed, so a target check would always fail. Its record is
- * the working tree and the ticked checkbox.
- *
- * A verbatim turn is held to nothing either, for a plainer reason: the
- * text is the whole instruction, so `callPlugin` does not send the
+ * A verbatim turn is held to nothing: the text is the whole instruction, so `callPlugin` does not send the
  * target and the agent is never told to write it. Checking for a file
  * nobody asked for turns "record the approval" - which correctly writes
  * nothing - into a failed phase. The document is still reported in
@@ -536,20 +449,10 @@ function outcome(
     request: PhaseRequest,
     result: CallResult,
     exists: (path: string) => boolean,
-    detached?: boolean,
     verbatim?: boolean
 ): PhaseOutcome {
 
     const sessionId = result.sessionId;
-
-    if (detached)
-        return {
-            success: result.success,
-            written: [],
-            missing: [],
-            sessionId,
-            message: result.success ? undefined : `Could not start the ${request.stage.id} conversation.`
-        };
 
     const written = request.targets.filter(exists);
     const missing = request.targets.filter(target => !exists(target));

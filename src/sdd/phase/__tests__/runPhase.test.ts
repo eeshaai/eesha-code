@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PluginHost, TaskExecutionContext, TaskResult } from "../../../core/plugins/PluginHost";
 import { Task } from "../../../core/models/task";
 import { PhaseRequest } from "../assemble";
-import { runPhase, runSession, startSession } from "../runPhase";
+import { runCall, runPhase, type RunPhaseInput, runSession, type SessionCall, type SessionHost } from "../runPhase";
 
 /** A host that records what it was asked to run and answers with whatever the test wants. */
 function host(result: Partial<TaskResult> = {}) {
@@ -40,10 +40,21 @@ function request(over: Partial<PhaseRequest> = {}): PhaseRequest {
     };
 }
 
-function input(over = {}) {
+/** Where a phase chat's turn runs, for the call `runPhase` hands it. */
+const AT: SessionHost = { specId: "specs/one", workspace: "C:/repo", runId: "r1" };
 
-    return { request: request(), specId: "specs/one", workspace: "C:/repo", runId: "r1", ...over };
+/**
+ * Runs a phase the way its chat runs the turn: the call `runPhase`
+ * builds goes through `runCall` to the fake host. The check is said in
+ * the chat's thread, so it is not looked at here.
+ */
+function phase(over: Partial<RunPhaseInput>, plugins: PluginHost, exists: (path: string) => boolean) {
+
+    return runPhase({ request: request(), workspace: "C:/repo", via: call => runCall(call, AT, plugins), ...over }, exists);
 }
+
+/** A call as a chat turn makes it, for the tests of the session's own hooks. */
+const CALL: SessionCall = { session: "design", prompt: "WRITE THE DESIGN", attachments: [], title: "design - one", ai: { uses: "ai@1", args: {} } };
 
 const wrote = (...paths: string[]) => (path: string) => paths.includes(path);
 
@@ -53,7 +64,7 @@ describe("the call it makes", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input(), fake, wrote("specs/one/design.md"));
+        await phase({}, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.plugin).toBe("ai@1");
         expect(calls[0].task.args).toMatchObject({ model: "auto", prompt: { literal: "WRITE THE DESIGN" } });
@@ -63,7 +74,7 @@ describe("the call it makes", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input(), fake, wrote("specs/one/design.md"));
+        await phase({}, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args).not.toHaveProperty("systemMessage");
     });
@@ -79,8 +90,8 @@ describe("the call it makes", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(
-            input({ prompt: "The task reads ${{ params.repo }}.", verbatim: true }),
+        await phase(
+            { prompt: "The task reads ${{ params.repo }}.", verbatim: true },
             fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args?.prompt).toEqual({ literal: "The task reads ${{ params.repo }}." });
@@ -95,7 +106,7 @@ describe("the call it makes", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input(), fake, wrote("specs/one/design.md"));
+        await phase({}, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args?.target).toBe("specs/one/design.md");
     });
@@ -110,9 +121,9 @@ describe("the call it makes", () => {
         const { host: fake, calls } = host();
         const picked = { name: "README.md", path: "C:/repo/docs/README.md" };
 
-        await runPhase(input({ prompt: "look", verbatim: true, sentFiles: [picked] }), fake, wrote("specs/one/design.md"));
-        await runPhase(input({ sentFiles: [picked] }), fake, wrote("specs/one/design.md"));
-        await runPhase(input({ prompt: "look", verbatim: true }), fake, wrote("specs/one/design.md"));
+        await phase({ prompt: "look", verbatim: true, sentFiles: [picked] }, fake, wrote("specs/one/design.md"));
+        await phase({ sentFiles: [picked] }, fake, wrote("specs/one/design.md"));
+        await phase({ prompt: "look", verbatim: true }, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args?.attachments).toEqual([picked]);
         expect(calls[1].task.args?.attachments).toEqual([
@@ -124,8 +135,8 @@ describe("the call it makes", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input({ files: ["src/api/users.ts"] }), fake, wrote("specs/one/design.md"));
-        await runPhase(input({ files: [] }), fake, wrote("specs/one/design.md"));
+        await phase({ files: ["src/api/users.ts"] }, fake, wrote("specs/one/design.md"));
+        await phase({ files: [] }, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args?.files).toEqual(["src/api/users.ts"]);
         expect(calls[1].task.args).not.toHaveProperty("files");
@@ -136,7 +147,7 @@ describe("the call it makes", () => {
         const many = request({ targets: ["specs/one/plan.md", "specs/one/research.md"] });
         const { host: fake, calls } = host();
 
-        await runPhase(input({ request: many }), fake, wrote("specs/one/plan.md", "specs/one/research.md"));
+        await phase({ request: many }, fake, wrote("specs/one/plan.md", "specs/one/research.md"));
 
         expect(calls[0].task.args?.target).toBe("specs/one/plan.md");
     });
@@ -145,7 +156,7 @@ describe("the call it makes", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input(), fake, wrote("specs/one/design.md"));
+        await phase({}, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].context).toMatchObject({ cwd: "C:/repo", root: "C:/repo", workspace: "C:/repo" });
     });
@@ -159,10 +170,20 @@ describe("the call it makes", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input(), fake, wrote("specs/one/design.md"));
+        await phase({}, fake, wrote("specs/one/design.md"));
 
         expect(calls).toHaveLength(1);
         expect(calls[0].task.needs).toEqual([]);
+    });
+
+    /* A phase is always waited for: its document is checked when the turn ends. */
+    it("never tells the plugin not to wait", async () => {
+
+        const { host: fake, calls } = host();
+
+        await phase({}, fake, wrote("specs/one/design.md"));
+
+        expect(calls[0].task.args).not.toHaveProperty("detach");
     });
 });
 
@@ -170,7 +191,7 @@ describe("what the phase left behind", () => {
 
     it("succeeds when the document is there", async () => {
 
-        const outcome = await runPhase(input(), host().host, wrote("specs/one/design.md"));
+        const outcome = await phase({}, host().host, wrote("specs/one/design.md"));
 
         expect(outcome).toEqual({ success: true, written: ["specs/one/design.md"], missing: [] });
     });
@@ -182,11 +203,38 @@ describe("what the phase left behind", () => {
      */
     it("fails a phase that reported success and wrote nothing", async () => {
 
-        const outcome = await runPhase(input(), host().host, wrote());
+        const outcome = await phase({}, host().host, wrote());
 
         expect(outcome.success).toBe(false);
         expect(outcome.missing).toEqual(["specs/one/design.md"]);
         expect(outcome.message).toMatch(/reported success without writing 'specs\/one\/design.md'/);
+    });
+
+    /*
+     * The chat says a missing document in its thread before its turn
+     * ends, so the check it is handed must name the document - and say
+     * nothing when the document is there.
+     */
+    it("hands the chat a check that names a missing document, and nothing when it is there", async () => {
+
+        const said: (string | undefined)[] = [];
+
+        for (const exists of [wrote(), wrote("specs/one/design.md")])
+            await runPhase(
+                {
+                    request: request(),
+                    workspace: "C:/repo",
+                    via: async (_call, check) => {
+
+                        said.push(check({ success: true }));
+
+                        return { success: true };
+                    }
+                },
+                exists);
+
+        expect(said[0]).toMatch(/reported success without writing 'specs\/one\/design.md'/);
+        expect(said[1]).toBeUndefined();
     });
 
     /*
@@ -199,7 +247,7 @@ describe("what the phase left behind", () => {
      */
     it("does not hold a verbatim turn to a document nobody asked it for", async () => {
 
-        const outcome = await runPhase(input({ verbatim: true }), host().host, wrote());
+        const outcome = await phase({ verbatim: true }, host().host, wrote());
 
         expect(outcome.success).toBe(true);
         expect(outcome.missing).toEqual(["specs/one/design.md"]);
@@ -209,7 +257,7 @@ describe("what the phase left behind", () => {
     it("fails when the plugin failed, whatever is on disk", async () => {
 
         const { host: fake } = host({ success: false });
-        const outcome = await runPhase(input(), fake, wrote("specs/one/design.md"));
+        const outcome = await phase({}, fake, wrote("specs/one/design.md"));
 
         expect(outcome.success).toBe(false);
         expect(outcome.written).toEqual(["specs/one/design.md"]);
@@ -219,7 +267,7 @@ describe("what the phase left behind", () => {
     it("says so when the phase ran out of time, rather than blaming the phase", async () => {
 
         const { host: fake } = host({ success: false, timedOut: true });
-        const outcome = await runPhase(input(), fake, wrote());
+        const outcome = await phase({}, fake, wrote());
 
         expect(outcome.message).toMatch(/hit its time limit/);
     });
@@ -234,8 +282,8 @@ describe("what the phase left behind", () => {
 
         const one = request({ targets: ["specs/one/plan.md"] });
 
-        const outcome = await runPhase(
-            input({ request: one }), host().host,
+        const outcome = await phase(
+            { request: one }, host().host,
             wrote("specs/one/plan.md", "specs/one/research.md"));
 
         expect(outcome).toEqual({ success: true, written: ["specs/one/plan.md"], missing: [] });
@@ -250,9 +298,7 @@ describe("cancellation and output", () => {
         const registerKill = vi.fn();
         const { host: fake, calls } = host();
 
-        await runPhase(
-            input({ onOutput, registerKill, isCancelled: () => true }),
-            fake, wrote("specs/one/design.md"));
+        await runCall(CALL, { ...AT, onOutput, registerKill, isCancelled: () => true }, fake);
 
         calls[0].context.onOutput("hello", "stdout");
         calls[0].context.registerKill(() => { });
@@ -266,7 +312,7 @@ describe("cancellation and output", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input(), fake, wrote("specs/one/design.md"));
+        await runCall(CALL, AT, fake);
 
         expect(() => calls[0].context.onOutput("x", "system")).not.toThrow();
         expect(() => calls[0].context.registerKill(() => { })).not.toThrow();
@@ -292,7 +338,7 @@ describe("handing the files over", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input({ request: withFiles }), fake, wrote("specs/one/design.md"));
+        await phase({ request: withFiles }, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args?.attachments).toEqual(withFiles.attachments);
         expect(calls[0].task.args).not.toHaveProperty("context");
@@ -308,7 +354,7 @@ describe("handing the files over", () => {
         const outside = request({ attachments: [{ name: "grammar", path: "/app/styles/custom/instructions/grammar.md" }] });
         const { host: fake, calls } = host();
 
-        await runPhase(input({ request: outside }), fake, wrote("specs/one/design.md"));
+        await phase({ request: outside }, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args?.attachments).toEqual([{ name: "grammar", path: "/app/styles/custom/instructions/grammar.md" }]);
     });
@@ -317,7 +363,7 @@ describe("handing the files over", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input({ request: request({ attachments: [] }) }), fake, wrote("specs/one/design.md"));
+        await phase({ request: request({ attachments: [] }) }, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args).not.toHaveProperty("attachments");
     });
@@ -331,7 +377,7 @@ describe("handing the files over", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input(), fake, wrote("specs/one/design.md"));
+        await phase({}, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args?.title).toBe("design - one");
     });
@@ -345,8 +391,8 @@ describe("handing the files over", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(
-            input({ prompt: "tighten section 2", continueSession: "chat-1", keep: true, verbatim: true }),
+        await phase(
+            { prompt: "tighten section 2", continueSession: "chat-1", keep: true, verbatim: true },
             fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args).toMatchObject(
@@ -366,8 +412,8 @@ describe("handing the files over", () => {
 
         const { host: fake, calls } = host();
 
-        const outcome = await runPhase(
-            { ...input({ prompt: "## Handed over\n\nwhy two stories?", keep: true }), request: request({ targets: [] }) },
+        const outcome = await phase(
+            { prompt: "## Handed over\n\nwhy two stories?", keep: true, request: request({ targets: [] }) },
             fake, wrote());
 
         expect(calls[0].task.args).toHaveProperty("title");
@@ -380,7 +426,7 @@ describe("handing the files over", () => {
 
         const { host: fake, calls } = host();
 
-        await runPhase(input(), fake, wrote("specs/one/design.md"));
+        await phase({}, fake, wrote("specs/one/design.md"));
 
         expect(calls[0].task.args).not.toHaveProperty("verbatim");
     });
@@ -398,7 +444,7 @@ describe("the session it opened", () => {
 
         const { host: fake } = host({ session: { id: "chat-42" } });
 
-        const outcome = await runPhase(input(), fake, wrote("specs/one/design.md"));
+        const outcome = await phase({}, fake, wrote("specs/one/design.md"));
 
         expect(outcome.sessionId).toBe("chat-42");
     });
@@ -408,7 +454,7 @@ describe("the session it opened", () => {
 
         const { host: fake } = host({ success: false, session: { id: "chat-43" } });
 
-        const outcome = await runPhase(input(), fake, wrote());
+        const outcome = await phase({}, fake, wrote());
 
         expect(outcome.success).toBe(false);
         expect(outcome.sessionId).toBe("chat-43");
@@ -418,7 +464,7 @@ describe("the session it opened", () => {
 
         const { host: fake } = host({ session: { id: "chat-44" } });
 
-        expect((await runPhase(input(), fake, wrote())).sessionId).toBe("chat-44");
+        expect((await phase({}, fake, wrote())).sessionId).toBe("chat-44");
     });
 
     /*
@@ -442,133 +488,18 @@ describe("the session it opened", () => {
             }
         } as unknown as PluginHost;
 
-        const outcome = await runPhase(
-            input({ onSession: (id: string) => void seen.push(id) }),
-            fake, wrote("specs/one/design.md"));
+        const result = await runCall(CALL, { ...AT, onSession: id => void seen.push(id) }, fake);
 
         expect(seen).toEqual(["chat-45"]);
         expect(reportedBeforeReturn).toBe(true);
-        expect(outcome.sessionId).toBe("chat-45");
-    });
-
-    it("carries the id back from a detached start too, which is the whole point of one", async () => {
-
-        const { host: fake } = host({ session: { id: "chat-46" } });
-
-        const outcome = await runPhase(
-            input({ detach: true }), fake, wrote());
-
-        expect(outcome.sessionId).toBe("chat-46");
+        expect(result.sessionId).toBe("chat-45");
     });
 
     it("leaves it absent when the plugin reported none", async () => {
 
-        const outcome = await runPhase(input(), host().host, wrote("specs/one/design.md"));
+        const outcome = await phase({}, host().host, wrote("specs/one/design.md"));
 
         expect(outcome.sessionId).toBeUndefined();
-    });
-});
-
-/*
- * The two kinds of start, and the one field between them.
- *
- * These are one function with one field between them, not two functions built by copy: a phase builder wires the transcript, the session id, the kill hook and cancellation, and a copy for the sessions nobody waits on would wire none of them. Nothing else would keep the two in step.
- */
-describe("starting without waiting", () => {
-
-    it("tells the plugin not to wait", async () => {
-
-        const { host: fake, calls } = host();
-
-        await runPhase(input({ detach: true }), fake, wrote());
-
-        expect(calls[0].task.args?.detach).toBe(true);
-    });
-
-    it("says nothing about detaching when the phase is waited for", async () => {
-
-        const { host: fake, calls } = host();
-
-        await runPhase(input(), fake, wrote("specs/one/design.md"));
-
-        expect(calls[0].task.args).not.toHaveProperty("detach");
-    });
-
-    /*
-     * A target the task will never check is a promise the task does not
-     * keep. Where the document goes is in the prompt either way.
-     */
-    it("names no target, because nothing is going to verify one", async () => {
-
-        const { host: fake, calls } = host();
-
-        await runPhase(input({ detach: true }), fake, wrote());
-
-        expect(calls[0].task.args).not.toHaveProperty("target");
-    });
-
-    /* The task returned when the prompt landed. Nothing has happened yet. */
-    it("succeeds with the document unwritten, which is what has not happened yet means", async () => {
-
-        const outcome = await runPhase(input({ detach: true }), host().host, wrote());
-
-        expect(outcome).toEqual({ success: true, written: [], missing: [], sessionId: undefined });
-    });
-
-    it("reports a start that failed against the phase it was starting", async () => {
-
-        const { host: fake } = host({ success: false });
-
-        const outcome = await runPhase(input({ detach: true }), fake, wrote());
-
-        expect(outcome.success).toBe(false);
-        expect(outcome.message).toMatch(/Could not start the design conversation/);
-    });
-
-    /*
-     * The anti-drift assertion: whatever a caller with no stage sends,
-     * a phase sends the same way. If these two ever diverge, it shows
-     * up here first.
-     */
-    it("builds the same call as a caller that has no stage to build a request from", async () => {
-
-        const viaPhase = host();
-        const viaPrimitives = host();
-
-        await runPhase(
-            input({ detach: true, prompt: "TALK TO THEM" }),
-            viaPhase.host, wrote());
-
-        await startSession(
-            {
-                session: "design",
-                prompt: "TALK TO THEM",
-                system: undefined,
-                attachments: [{ name: "requirements", path: "C:/repo/specs/one/requirements.md" }],
-                title: "design - one",
-                ai: { uses: "ai@1", args: { model: "auto" } }
-            },
-            { specId: "specs/one", workspace: "C:/repo", runId: "r1" },
-            viaPrimitives.host);
-
-        expect(viaPhase.calls[0].task).toEqual(viaPrimitives.calls[0].task);
-        expect(viaPhase.calls[0].context.cwd).toBe(viaPrimitives.calls[0].context.cwd);
-        expect(viaPhase.calls[0].context.ownerId).toBe(viaPrimitives.calls[0].context.ownerId);
-    });
-
-    it("hands a detached start the same cancellation hooks a waited one gets", async () => {
-
-        const registerKill = vi.fn();
-        const { host: fake, calls } = host();
-
-        await runPhase(
-            input({ detach: true, registerKill, isCancelled: () => true }),
-            fake, wrote());
-
-        calls[0].context.registerKill(() => { });
-
-        expect(registerKill).toHaveBeenCalled();
-        expect(calls[0].context.isCancelled?.()).toBe(true);
     });
 });
 
@@ -577,7 +508,7 @@ describe("starting without waiting", () => {
  * plugin's cancel handlers (ai@1's AbortController) to
  * context.registerCancel - never to registerKill, which is the
  * sandbox's process-kill channel an in-process ai task never fills.
- * runPhase therefore routes BOTH into the caller's one kill hook, and
+ * runCall therefore routes BOTH into the caller's one kill hook, and
  * this is the pin: lose either registration and Stop goes back to
  * being a flag nothing polls.
  */
@@ -599,9 +530,7 @@ describe("stopping a phase", () => {
 
         const stops: (() => void)[] = [];
 
-        await runPhase(
-            input({ registerKill: (kill: () => void) => stops.push(kill) }),
-            fake, wrote("specs/one/design.md"));
+        await runCall(CALL, { ...AT, registerKill: kill => { stops.push(kill); } }, fake);
 
         // Both mechanisms land in the hook - the cancel bundle and the
         // process kill - and pulling them stops the agent both ways.

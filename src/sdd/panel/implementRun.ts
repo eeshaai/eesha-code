@@ -3,7 +3,6 @@ import * as path from "path";
 import { execFile } from "child_process";
 
 import { markTaskDone } from "../../core/agent/providers/planTools";
-import { EnvService } from "../../core/env/envService";
 import type { EventWriter } from "../../core/events/EventWriter";
 import { sessionRuns } from "../../core/events/runEvents";
 import { WORKFLOWS_SUBDIR } from "../../core/loader/constants";
@@ -259,10 +258,10 @@ export class ImplementRun {
     }
 
     /**
-     * Hands tasks to agent sessions nobody waits on - one per wave.
+     * Hands tasks to agent sessions - one per wave, each in its own chat.
      *
-     * The same plugin every drafting phase runs on, with `detach` set,
-     * so each session lands on whatever `provider:` the implement stage
+     * The same plugin every drafting phase runs on, so each session
+     * lands on whatever `provider:` the implement stage
      * is configured with. Not run *by* the engine even so, and this is
      * the honest shape of that: the style's implement prompt, with one
      * wave's tasks in it, opened in the user's own agent session. Git
@@ -764,10 +763,7 @@ export class ImplementRun {
                 {
                     request,
                     keep: true,
-                    specId: found.spec.path,
                     workspace: this.owner.workspace,
-                    runId: `sdd:${found.spec.path}`,
-                    processEnv: EnvService.machine(),
 
                     // The chat ticks its boxes through `task_done` - one
                     // character in this file, never the file through the
@@ -780,7 +776,6 @@ export class ImplementRun {
 
                     via: (call, check) => chat.runOwned(call, check)
                 },
-                this.owner.host.plugins(),
                 () => true);
 
             if (!outcome.success)

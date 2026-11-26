@@ -20,8 +20,7 @@ import {
  * `runPhase` itself, replaced with a controllable fake. What the panel
  * does around a run - which markers it writes, what it records, what it
  * reports on failure - does not need a real agent behind it, only a
- * result to react to. `startSession` is left real; nothing here calls
- * it.
+ * result to react to.
  */
 vi.mock("../../phase/runPhase", async () => {
 
@@ -1960,18 +1959,14 @@ describe("running a phase - what the panel records", () => {
     });
 
     /*
-     * `onSession` and the outcome both carry the same id on the ordinary
-     * path. Recording it both times would leave two junk lines in the file on
-     * every single turn, for the life of the spec.
+     * The phase's chat writes the id into its own file; the spec's file
+     * gets it once, from the outcome. Recording it twice would leave
+     * junk lines in the file on every single turn, for the life of the
+     * spec.
      */
-    it("records a session id once, not twice, when onSession already reported it", async () => {
+    it("records a session id once, not twice", async () => {
 
-        runPhaseMock.mockImplementation(async input => {
-
-            input.onSession?.("chat-9");
-
-            return { success: true, written: [], missing: [], sessionId: "chat-9" };
-        });
+        runPhaseMock.mockResolvedValue({ success: true, written: [], missing: [], sessionId: "chat-9" });
 
         const panel = await show(context());
 

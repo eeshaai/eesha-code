@@ -1885,15 +1885,13 @@ describe("a phase chat - one SDD made for a phase of a spec", () => {
                 target: "requirements.md",
                 refuseWrites: [path.join(workspace, "design.md")],
                 interactive: true,
-                detach: true,
                 ai: { uses: "ai@1", args: { provider: "claude" } }
             },
             () => "The requirements phase reported success without writing 'requirements.md'.");
 
         await until(() => turn.call() !== undefined);
 
-        // The chat's own name for the conversation, held after the turn
-        // and waited for - never detached.
+        // The chat's own name for the conversation, held after the turn.
         expect(turn.call()).toMatchObject({
             session: "chat",
             prompt: "Write requirements.md",
@@ -1903,7 +1901,6 @@ describe("a phase chat - one SDD made for a phase of a spec", () => {
             keep: true,
             interactive: true
         });
-        expect(turn.call()!.detach).toBeUndefined();
         expect(chat.working).toBe(true);
 
         turn.finish(true);

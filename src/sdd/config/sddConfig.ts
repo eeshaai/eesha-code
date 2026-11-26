@@ -82,11 +82,12 @@ export interface AiPick {
 /**
  * Args the engine writes itself, refused wherever a person can write one.
  *
- * {@link src/sdd/phase/runPhase} writes these five over whatever it was
- * handed, and both ways that goes wrong are silent. `prompt`, `title`
- * and `attachments` are always overwritten, so a value here is dropped
- * without a word. `detach` and `target` are set only when the engine
- * wants them, so on an ordinary phase the value survives - and
+ * {@link src/sdd/phase/runPhase} writes four of these over whatever it
+ * was handed, and both ways that goes wrong are silent. `prompt`,
+ * `title` and `attachments` are always overwritten, so a value here is
+ * dropped without a word. `target` is set only when the phase has a
+ * document to write, so otherwise the value survives. `detach` is never
+ * written by the engine, so a value here would reach `ai@1` - and
  * `detach: true` skips the check that the document was written.
  *
  * Each is refused naming the key that does what the author wanted.

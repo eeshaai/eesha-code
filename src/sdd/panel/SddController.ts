@@ -18,7 +18,6 @@ import { OpenQuestionRef, SpecStage, StageAi } from "../../shared/runMessages";
 import { PanelWidths, SpecMessage, ToPanel, ToSddView } from "../../shared/sddMessages";
 import { ReviewNote } from "../../view/templates/reviewNotes";
 import { baseline, readNotes, snapshot, writeNotes } from "./reviewStore";
-import { EnvService } from "../../core/env/envService";
 import { endChatTask, reopenChatTask, taskSessions } from "./taskSessions";
 import { EventWriter } from "../../core/events/EventWriter";
 import { specEventsPath } from "../../core/events/eventFile";
@@ -1551,7 +1550,6 @@ export class SddController {
             await this.keepBaseline(found, stageId);
 
             const request = await this.phaseRequest(found, stageId, start.revision);
-            const plugins = this.host.plugins();
             const provider = providerOf(request.ai.args);
             const model = modelOf(request.ai.args);
 
@@ -1634,10 +1632,7 @@ export class SddController {
                     request: attachments.length === request.attachments.length
                         ? request
                         : { ...request, attachments },
-                    specId: found.spec.path,
                     workspace: this.workspace,
-                    runId: `sdd:${found.spec.path}`,
-                    processEnv: EnvService.machine(),
                     keep: true,
                     continueSession: continuing,
                     ...(start.files?.length ? { sentFiles: start.files } : {}),
@@ -1652,7 +1647,6 @@ export class SddController {
                     // down, draws it, and keeps its own stop and session id.
                     via: (call, check) => chat.runOwned(call, check)
                 },
-                plugins,
                 // `resolve`, not `join`: a target is repository-relative
                 // when specs live in the repository and absolute when the
                 // settings name a root elsewhere. `resolve` takes the

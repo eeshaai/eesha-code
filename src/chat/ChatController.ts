@@ -1228,201 +1228,158 @@ export class ChatController {
         if (refused)
             return this.note(refused);
 
-        this.busy = true;
-        this.cancelRequested = false;
-        this.post({ type: "busy", running: true });
+        await this.runTurn({
 
-        owner?.started(() => this.stop());
+            begun: () => owner?.started(() => this.stop()),
 
-        // So the fallback write below does not repeat what `onSession` did.
-        let recorded: string | undefined;
+            run: async turn => {
 
-        // Why the turn failed, when it does - see `onOutput` below.
-        let problem: string | undefined;
+                // Never worth holding the message back for: without the copy,
+                // "What changed" only compares against an older one.
+                await owner?.keepBaseline().catch(error =>
+                    logger.warning(`Chat: the phase document was not put aside before the turn. ${(error as Error).message}`));
 
-        // Each watched repository's working tree before the turn, so what
-        // it changed can be listed, diffed and undone - see
-        // `turnSnapshot.ts`.
-        let before: { root: string; tree: string }[] = [];
+                // A phase chat runs on the spec's AI, on the runtime it is
+                // held to: the one it started on, or the one a Handover just
+                // picked. The pickers do not choose it.
+                let { ai } = owner
+                    ? { ai: await owner.ai(fresh ? this.pickOf(this.chatId) : last?.provider ? { provider: last.provider } : undefined) }
+                    : await this.resolveAi();
 
-        // How the turn ended, for the notice.
-        let succeeded = false;
+                // A started chat stays on the runtime it started on, whatever
+                // the settings' default says now - only the Handover button
+                // moves it.
+                if (!owner && !fresh && last?.provider && providerOf(ai.args) !== last.provider) {
 
-        // The runtime it ran on - its session may have sent a new
-        // command list, read again at the end.
-        let turnRuntime: string | undefined;
+                    await this.host.store.update(
+                        PICK_PREFIX + this.chatId, { provider: last.provider, ...(last.model ? { model: last.model } : {}) });
 
-        // The earlier messages' file this message carries - see `goBack`.
-        let carry: { path: string; lines: number } | undefined;
+                    ({ ai } = await this.resolveAi());
 
-        try {
+                    void this.postAiChoice();
 
-            before = await this.snapshotsBefore();
+                    // Held and still elsewhere: its runtime is no longer in
+                    // `ai.providers`. Never a silent move.
+                    if (providerOf(ai.args) !== last.provider)
+                        throw new Error(`This session runs on ${last.provider}, which ai.providers no longer lists. Use Handover to move it to another runtime, or start a new session.`);
+                }
 
-            // Never worth holding the message back for: without the copy,
-            // "What changed" only compares against an older one.
-            await owner?.keepBaseline().catch(error =>
-                logger.warning(`Chat: the phase document was not put aside before the turn. ${(error as Error).message}`));
+                const provider = providerOf(ai.args);
 
-            // A phase chat runs on the spec's AI, on the runtime it is
-            // held to: the one it started on, or the one a Handover just
-            // picked. The pickers do not choose it.
-            let { ai } = owner
-                ? { ai: await owner.ai(fresh ? this.pickOf(this.chatId) : last?.provider ? { provider: last.provider } : undefined) }
-                : await this.resolveAi();
+                // The host may hold the turn back until the person has chosen
+                // something - see `ChatHost.beforeTurn`.
+                const held = await this.host.beforeTurn?.(provider);
 
-            // A started chat stays on the runtime it started on, whatever
-            // the settings' default says now - only the Handover button
-            // moves it.
-            if (!owner && !fresh && last?.provider && providerOf(ai.args) !== last.provider) {
+                if (held)
+                    throw new Error(held);
 
-                await this.host.store.update(
-                    PICK_PREFIX + this.chatId, { provider: last.provider, ...(last.model ? { model: last.model } : {}) });
+                // Its session may send a new command list, read again at the end.
+                turn.runtime = provider;
+                const model = modelOf(ai.args);
 
-                ({ ai } = await this.resolveAi());
+                // The tools and standing instructions are the chat's own. A
+                // phase chat runs as SDD runs the phase: the spec's AI as it
+                // is, with neither.
+                const key = owner ? undefined : await this.applyToolset(ai, provider, tools);
+                const applied = this.host.store.get<string>(APPLIED_PREFIX + this.chatId);
 
-                void this.postAiChoice();
+                // A Handover start has already let the old session go, and
+                // carries nothing on: neither of these applies to it.
+                const modelChanged = !fresh && last !== undefined && last.model !== undefined && (model ?? "auto") !== last.model;
 
-                // Held and still elsewhere: its runtime is no longer in
-                // `ai.providers`. Never a silent move.
-                if (providerOf(ai.args) !== last.provider)
-                    throw new Error(`This session runs on ${last.provider}, which ai.providers no longer lists. Use Handover to move it to another runtime, or start a new session.`);
-            }
+                // Tools and servers are fixed when a session starts, so a new
+                // pick reopens the conversation the way a new model does.
+                const toolsChanged = key !== undefined && !fresh && last !== undefined && !modelChanged && applied !== undefined && applied !== key;
 
-            const provider = providerOf(ai.args);
+                if (last && (modelChanged || toolsChanged)) {
 
-            // The host may hold the turn back until the person has chosen
-            // something - see `ChatHost.beforeTurn`.
-            const held = await this.host.beforeTurn?.(provider);
+                    // Nothing will talk to the held session again: it is
+                    // reopened on the new model or tools - `ai@1` carries a
+                    // held session on as it is.
+                    if (this.host.sessions().get(last.sessionId))
+                        try {
 
-            if (held)
-                throw new Error(held);
+                            await this.host.sessions().end(last.sessionId);
 
-            turnRuntime = provider;
-            const model = modelOf(ai.args);
+                        } catch (error) {
 
-            // The tools and standing instructions are the chat's own. A
-            // phase chat runs as SDD runs the phase: the spec's AI as it
-            // is, with neither.
-            const key = owner ? undefined : await this.applyToolset(ai, provider, tools);
-            const applied = this.host.store.get<string>(APPLIED_PREFIX + this.chatId);
+                            logger.warning(`Chat: could not stop session ${last.sessionId}. ${(error as Error).message}`);
+                        }
 
-            // A Handover start has already let the old session go, and
-            // carries nothing on: neither of these applies to it.
-            const modelChanged = !fresh && last !== undefined && last.model !== undefined && (model ?? "auto") !== last.model;
+                    this.post({
+                        type: "log", stream: "system",
+                        text: modelChanged
+                            ? `Model changed from ${last.model} to ${model ?? "auto"} - reopening the conversation.\n`
+                            : "Tools or MCP servers changed - reopening the conversation with them.\n"
+                    });
+                }
 
-            // Tools and servers are fixed when a session starts, so a new
-            // pick reopens the conversation the way a new model does.
-            const toolsChanged = key !== undefined && !fresh && last !== undefined && !modelChanged && applied !== undefined && applied !== key;
+                // After going back on a runtime that could not cut its
+                // conversation: this message starts a new one, so what was
+                // said before goes with it as a file. The thread shows only
+                // what was typed. See `goBack`.
+                const carry = !fresh && !last ? this.carryOf(this.chatId) : undefined;
 
-            if (last && (modelChanged || toolsChanged)) {
+                const called = await this.callAgent(
+                    {
+                        session: OWNER,
+                        prompt: carry
+                            ? goBackPrompt(currentEvents(this.events.read()), OWNER, { path: shownPath(workspace, carry.path), lines: carry.lines }, prompt)
+                            : prompt,
+                        ...(carry || prompt !== text ? { shown: text } : {}),
+                        attachments: [],
+                        ...(sent.attachments.length ? { sentFiles: sent.attachments } : {}),
 
-                // Nothing will talk to the held session again: it is
-                // reopened on the new model or tools - `ai@1` carries a
-                // held session on as it is.
-                if (this.host.sessions().get(last.sessionId))
-                    try {
+                        // Only sent on a non-verbatim call, which this never
+                        // is: a chat is named by its first message.
+                        title: "chat",
 
-                        await this.host.sessions().end(last.sessionId);
+                        ai,
+                        keep: true,
 
-                    } catch (error) {
+                        // An evaluation's variant runs with nobody to answer it.
+                        interactive: this.host.unattended?.() !== true,
 
-                        logger.warning(`Chat: could not stop session ${last.sessionId}. ${(error as Error).message}`);
-                    }
+                        // As typed. A Handover start is sent as written too.
+                        verbatim: true,
+                        ...(last && !fresh ? { continueSession: last.sessionId } : {}),
 
-                this.post({
-                    type: "log", stream: "system",
-                    text: modelChanged
-                        ? `Model changed from ${last.model} to ${model ?? "auto"} - reopening the conversation.\n`
-                        : "Tools or MCP servers changed - reopening the conversation with them.\n"
-                });
-            }
+                        // A phase chat's: the files it may not write, the plan it ticks.
+                        ...(owner ? await owner.extras() : {})
+                    },
+                    { workspace, provider, model, plugins: this.plugins(owner), sentWith });
 
-            // After going back on a runtime that could not cut its
-            // conversation: this message starts a new one, so what was
-            // said before goes with it as a file. The thread shows only
-            // what was typed.
-            carry = !fresh && !last ? this.carryOf(this.chatId) : undefined;
+                if (called.opened && key !== undefined)
+                    await this.host.store.update(APPLIED_PREFIX + this.chatId, key);
 
-            const outcome = await runCall(
-                {
-                    session: OWNER,
-                    prompt: carry
-                        ? goBackPrompt(currentEvents(this.events.read()), OWNER, { path: shownPath(workspace, carry.path), lines: carry.lines }, prompt)
-                        : prompt,
-                    ...(carry || prompt !== text ? { shown: text } : {}),
-                    attachments: [],
-                    ...(sent.attachments.length ? { sentFiles: sent.attachments } : {}),
+                // The new conversation has it now.
+                if (carry && called.opened)
+                    await this.host.store.update(CARRY_PREFIX + this.chatId, undefined);
 
-                    // Only sent on a non-verbatim call, which this never
-                    // is: a chat is named by its first message.
-                    title: "chat",
+                if (!called.result.success && !this.cancelRequested)
+                    this.fail(this.failureText(called.result, called.problem, "The message did not go through"));
 
-                    ai,
-                    keep: true,
-
-                    // An evaluation's variant runs with nobody to answer it.
-                    interactive: this.host.unattended?.() !== true,
-
-                    // As typed. A Handover start is sent as written too.
-                    verbatim: true,
-                    ...(last && !fresh ? { continueSession: last.sessionId } : {}),
-
-                    // A phase chat's: the files it may not write, the plan it ticks.
-                    ...(owner ? await owner.extras() : {})
-                },
-                this.sessionHost(workspace, provider, model, {
-                    recorded: id => { recorded = id; },
-                    problem: line => { problem = line; },
-                    sentWith
-                }),
-                this.plugins(owner));
-
-            if (outcome.sessionId && outcome.sessionId !== recorded)
-                this.events.session(OWNER, outcome.sessionId, provider, model);
-
-            if ((outcome.sessionId || recorded) && key !== undefined)
-                await this.host.store.update(APPLIED_PREFIX + this.chatId, key);
-
-            // The new conversation has it now.
-            if (carry && (outcome.sessionId || recorded))
-                await this.host.store.update(CARRY_PREFIX + this.chatId, undefined);
-
-            succeeded = outcome.success;
-
-            if (!outcome.success && !this.cancelRequested)
-                this.fail(outcome.timedOut
-                    ? "The turn hit its time limit and was stopped."
-                    : problem
-                        ? `The message did not go through. ${problem.replace(/^The agent could not finish:\s*/, "")}`
-                        : `The message did not go through, and the runtime gave no reason. ${this.host.logPlace} has the full log.`);
-
-        } catch (error) {
-
-            this.fail((error as Error).message);
-
-        } finally {
-
-            await this.endTurn(before, turnRuntime, succeeded);
+                return called.result.success;
+            },
 
             // The spec reads the phase's document again. After the turn
             // is over, so a phase started from it finds the chat free.
-            if (owner)
-                await owner.ended(succeeded).catch(error =>
-                    logger.warning(`Chat: the spec could not finish the turn's end. ${(error as Error).message}`));
-        }
+            ended: owner
+                ? succeeded => owner.ended(succeeded).catch(error =>
+                    logger.warning(`Chat: the spec could not finish the turn's end. ${(error as Error).message}`))
+                : undefined
+        });
     }
 
     /**
      * A turn SDD hands this chat: the first message of a phase, a Revise,
-     * or a wave of Implementation. It runs like a typed turn - written
-     * down, drawn, the files it changed listed, the host told when it
-     * ends - only the call is SDD's: the phase's prompt with its title,
-     * its documents, the document it must write and the files it may
-     * not. `check` says why the turn failed when the plugin said it went
-     * well but the phase did not (see `RunPhaseInput.via`); it is said in
-     * the thread. The owner's `started` and `ended` are not called: SDD
-     * waits for this itself.
+     * or a wave of Implementation. It runs like a typed turn - the same
+     * steps (see `runTurn`) - only the call is SDD's: the phase's prompt
+     * with its title, its documents, the document it must write and the
+     * files it may not. `check` says why the turn failed when the plugin
+     * said it went well but the phase did not (see `RunPhaseInput.via`);
+     * it is said in the thread. The owner's `started` and `ended` are not
+     * called: SDD waits for this itself.
      *
      * Refused, with nothing done, while another turn runs - see `working`.
      */
@@ -1433,59 +1390,137 @@ export class ChatController {
         if (!workspace || this.busy)
             return { success: false };
 
+        const provider = providerOf(call.ai.args);
+        const model = modelOf(call.ai.args);
+
+        // Stays a failure when the turn throws before it is known.
+        let result: CallResult = { success: false };
+
+        await this.runTurn({
+
+            runtime: provider,
+
+            run: async () => {
+
+                // Held after the turn, as every turn of a chat is.
+                const called = await this.callAgent(
+                    { ...call, session: OWNER, keep: true },
+                    { workspace, provider, model, plugins: this.plugins(this.host.owner?.()) });
+
+                const missing = check(called.result);
+
+                result = called.result;
+
+                const succeeded = result.success && !missing;
+
+                if (!succeeded && !this.cancelRequested)
+                    this.fail(missing ?? this.failureText(result, called.problem, "The phase did not complete"));
+
+                return succeeded;
+            }
+        });
+
+        return result;
+    }
+
+    /**
+     * The steps every turn of this chat takes, whether the person typed
+     * it or SDD handed it, so a change to them reaches both:
+     *
+     * 1. Busy on, then `begun`.
+     * 2. Each watched repository's working tree is put aside, so what the
+     *    turn changed can be listed, diffed and undone - see
+     *    `turnSnapshot.ts`.
+     * 3. `run`, which answers whether the turn went well. A throw is said
+     *    in the thread and counts as a failed turn.
+     * 4. The turn's end, however it went - see `endTurn` - then `ended`.
+     *
+     * `runtime`: the one the turn runs on, when it is known before `run`
+     * starts. `run` sets `turn.runtime` once it knows.
+     */
+    private async runTurn(steps: {
+        runtime?: string;
+        begun?(): void;
+        run(turn: { runtime?: string }): Promise<boolean>;
+        ended?(succeeded: boolean): Promise<void>;
+    }): Promise<void> {
+
         this.busy = true;
         this.cancelRequested = false;
         this.post({ type: "busy", running: true });
 
-        const provider = providerOf(call.ai.args);
-        const model = modelOf(call.ai.args);
+        steps.begun?.();
 
-        let recorded: string | undefined;
-        let problem: string | undefined;
+        const turn = { runtime: steps.runtime };
+
         let before: { root: string; tree: string }[] = [];
-        let result: CallResult = { success: false };
         let succeeded = false;
 
         try {
 
             before = await this.snapshotsBefore();
 
-            // Held after the turn, as every turn of a chat is, and waited
-            // for: the chat's own end is the turn's end.
-            result = await runCall(
-                { ...call, session: OWNER, keep: true, detach: undefined },
-                this.sessionHost(workspace, provider, model, {
-                    recorded: id => { recorded = id; },
-                    problem: line => { problem = line; }
-                }),
-                this.plugins(this.host.owner?.()));
-
-            if (result.sessionId && result.sessionId !== recorded)
-                this.events.session(OWNER, result.sessionId, provider, model);
-
-            const missing = check(result);
-
-            succeeded = result.success && !missing;
-
-            if (!succeeded && !this.cancelRequested)
-                this.fail(missing ?? (result.timedOut
-                    ? "The turn hit its time limit and was stopped."
-                    : problem
-                        ? `The phase did not complete. ${problem.replace(/^The agent could not finish:\s*/, "")}`
-                        : `The phase did not complete, and the runtime gave no reason. ${this.host.logPlace} has the full log.`));
+            succeeded = await steps.run(turn);
 
         } catch (error) {
 
             this.fail((error as Error).message);
 
-            result = { success: false };
-
         } finally {
 
-            await this.endTurn(before, provider, succeeded);
-        }
+            await this.endTurn(before, turn.runtime, succeeded);
 
-        return result;
+            await steps.ended?.(succeeded);
+        }
+    }
+
+    /**
+     * One call to the agent from this chat, with this chat's ids, file and
+     * view (see `sessionHost`). The conversation is written down the
+     * moment the plugin opens it, or from the result when the plugin never
+     * said. `opened`: a conversation was opened, either way. `problem`:
+     * the last error line the plugin printed - the turn's reason when it
+     * fails. `sentWith`: see `sessionHost`.
+     */
+    private async callAgent(
+        call: SessionCall,
+        where: { workspace: string; provider: string; model: string | undefined; plugins: PluginHost; sentWith?: string[] }
+    ): Promise<{ result: CallResult; opened: boolean; problem?: string }> {
+
+        const { workspace, provider, model } = where;
+
+        // So the write below does not repeat what `onSession` did.
+        let recorded: string | undefined;
+        let problem: string | undefined;
+
+        const result = await runCall(
+            call,
+            this.sessionHost(workspace, provider, model, {
+                recorded: id => { recorded = id; },
+                problem: line => { problem = line; },
+                ...(where.sentWith ? { sentWith: where.sentWith } : {})
+            }),
+            where.plugins);
+
+        if (result.sessionId && result.sessionId !== recorded)
+            this.events.session(OWNER, result.sessionId, provider, model);
+
+        return { result, opened: Boolean(result.sessionId || recorded), problem };
+    }
+
+    /**
+     * What the thread says about a turn that did not go well. `what`: the
+     * thing that did not happen - "The message did not go through", "The
+     * phase did not complete".
+     */
+    private failureText(result: CallResult, problem: string | undefined, what: string): string {
+
+        if (result.timedOut)
+            return "The turn hit its time limit and was stopped.";
+
+        return problem
+            ? `${what}. ${problem.replace(/^The agent could not finish:\s*/, "")}`
+            : `${what}, and the runtime gave no reason. ${this.host.logPlace} has the full log.`;
     }
 
     /**
