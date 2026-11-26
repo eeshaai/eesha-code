@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 
+import type { ConnectorId } from "./protocol";
 import type { RuntimeTools } from "./settings";
 
 /*
@@ -13,7 +14,52 @@ import type { RuntimeTools } from "./settings";
  *
  * A chat with no folder has only the third. A file's front matter (the
  * `---` block a Kiro steering file starts with) is left out.
+ *
+ * Eesha Code's own text about its chat page and its connectors
+ * (`APP_INSTRUCTIONS`, `connectorsNote`) goes in front of all of these -
+ * see `ServerChatHost.systemInstructions`.
  */
+
+/**
+ * What every session is told about how Eesha Code's chat page shows a
+ * reply. A shell block gets Run (see CommandBlock.tsx), which runs it
+ * once with nobody to type into it; a mermaid block is drawn.
+ */
+export const APP_INSTRUCTIONS = [
+    "Eesha Code shows your replies in its own chat page.",
+    "- A code block tagged with a shell language (powershell, bash, sh, cmd and so on) gets a Run button. "
+        + "Run starts the command once, in one of this session's folders, and shows what it prints. Nobody can type into it. "
+        + "So: one command per block, the right language tag, no \"$\" or other prompt sign, no output inside the block, "
+        + "and no command that waits for typed input.",
+    "- A mermaid code block is drawn as a diagram. Use one when a flow or a structure is easier to see than to read."
+].join("\n");
+
+/** How `connectorsNote` names each connector, its tools and its command line. */
+const CONNECTOR_WORDS: Readonly<Record<ConnectorId, { name: string; tools: string; cli: string }>> = {
+    ado: { name: "Azure DevOps", tools: "ado_", cli: "az" },
+    github: { name: "GitHub", tools: "gh_", cli: "gh" }
+};
+
+/**
+ * The line that sends ADO and GitHub work through our connector tools
+ * rather than the `az` or `gh` command line, naming only the connectors
+ * connected. A connector write shows a permission card; a command that
+ * makes the same change may not. Nothing when none is connected.
+ */
+export function connectorsNote(connected: readonly ConnectorId[]): string | undefined {
+
+    const words = connected.map(id => CONNECTOR_WORDS[id]);
+
+    if (!words.length)
+        return undefined;
+
+    const names = words.map(one => one.name).join(" and ");
+    const tools = words.map(one => one.tools).join(" and ");
+    const clis = words.map(one => one.cli).join(" or ");
+
+    return `For ${names}, use Eesha Code's ${tools} tools, not the ${clis} command line. `
+        + "A change made through these tools shows the person a permission card first. The same change made with a command does not.";
+}
 
 /** The folder inside a chat folder that holds the instruction files. */
 export const INSTRUCTIONS_FOLDER = ".eesha";

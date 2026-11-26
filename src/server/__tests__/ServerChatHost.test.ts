@@ -13,7 +13,9 @@ import { AgentSessions } from "../../core/agent";
 import { AnswerBook } from "../../core/agent/permissions";
 import type { ChatController } from "../../chat/ChatController";
 import { contentAt } from "../../chat/turnSnapshot";
+import type { ConnectorsConfig } from "../connectors/config";
 import { Connectors } from "../connectors/Connectors";
+import { APP_INSTRUCTIONS, connectorsNote } from "../instructions";
 import { Memory } from "../memory/Memory";
 import { MemoryStore } from "../memory/memoryStore";
 import { ServerChatHost, HostServer } from "../ServerChatHost";
@@ -544,6 +546,35 @@ describe("our own permission check", () => {
     });
 });
 
+describe("what a new session is told", () => {
+
+    const ADO_CONNECTED: ConnectorsConfig = {
+        ado: {
+            reach: [{ org: "contoso", project: "Web" }],
+            sources: { workitems: "write", queries: "off", repos: "off", pulls: "off", builds: "off", releases: "off", wiki: "off", testplans: "off" }
+        }
+    };
+
+    it("is Eesha Code's own text alone in a chat with no files, no connector and memory off", () => {
+
+        expect(setUp([temporaryFolder()]).host.systemInstructions("claude")).toBe(APP_INSTRUCTIONS);
+    });
+
+    it("puts Eesha Code's own text and the connectors line in front of system.md", () => {
+
+        const work = temporaryFolder();
+
+        fs.mkdirSync(path.join(work, ".eesha"));
+        fs.writeFileSync(path.join(work, ".eesha", "system.md"), "Be brief.");
+
+        const { server } = setUp([work]);
+        const connectors = new Connectors({ folders: () => [], onSignIn: () => undefined, readConfig: () => ADO_CONNECTED });
+        const host = new ServerChatHost({ ...server, connectors }, { folders: [work], scratch: false });
+
+        expect(host.systemInstructions("claude")).toBe(`${APP_INSTRUCTIONS}\n\n${connectorsNote(["ado"])}\n\nBe brief.`);
+    });
+});
+
 describe("memory in a chat", () => {
 
     const ON: MemoryChoices = { access: "write", askOnSave: false, claudeMemoryOff: false };
@@ -582,7 +613,7 @@ describe("memory in a chat", () => {
         fs.mkdirSync(path.join(work, ".eesha"));
         fs.writeFileSync(path.join(work, ".eesha", "system.md"), "Be brief.");
 
-        expect(setUp([work]).host.systemInstructions("kiro-cli")).toBe("Be brief.");
+        expect(setUp([work]).host.systemInstructions("kiro-cli")).toBe(`${APP_INSTRUCTIONS}\n\nBe brief.`);
 
         const { host, server } = await inWorkspace(work);
 
@@ -590,7 +621,7 @@ describe("memory in a chat", () => {
 
         const told = host.systemInstructions("kiro-cli")!;
 
-        expect(told.startsWith("Be brief.\n\nEesha Code keeps a memory")).toBe(true);
+        expect(told.startsWith(`${APP_INSTRUCTIONS}\n\nBe brief.\n\nEesha Code keeps a memory`)).toBe(true);
         expect(told).toContain("- 1 (workspace Login bug) Cause");
     });
 

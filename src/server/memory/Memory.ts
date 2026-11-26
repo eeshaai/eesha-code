@@ -384,6 +384,7 @@ export class Memory {
         const lines = [
             "Eesha Code keeps a memory: short facts saved in earlier sessions, by the person or by an agent. "
                 + `Its tools are ${this.allowed().map(tool => tool.name).join(", ")}.`,
+            "- Use this memory, not a memory feature of your own.",
             "- Before you start a task, look at the titles below and read the ones that could matter with memory_read.",
             ...(access === "write"
                 ? [

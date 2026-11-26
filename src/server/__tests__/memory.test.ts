@@ -425,6 +425,7 @@ describe("what a new session is told about memory", () => {
         const told = memory.instructions(IN_WORKSPACE)!;
 
         expect(told).toContain("memory_list, memory_search, memory_read, memory_save, memory_delete");
+        expect(told).toContain("- Use this memory, not a memory feature of your own.");
         expect(told).toContain("save it with memory_save");
         expect(told).toContain("- 1 (global) Tabs");
         expect(told).toContain("- 2 (workspace Login bug) Cause");

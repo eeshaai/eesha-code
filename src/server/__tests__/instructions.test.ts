@@ -7,7 +7,7 @@ import * as path from "path";
 
 import { describe, expect, it } from "vitest";
 
-import { readInstructionFile, standingInstructions, toolsNote } from "../instructions";
+import { connectorsNote, readInstructionFile, standingInstructions, toolsNote } from "../instructions";
 import { serverSettingsFrom } from "../settings";
 
 /*
@@ -61,6 +61,24 @@ describe("standing instructions", () => {
 
         expect(readInstructionFile(file)).toBeUndefined();
         expect(readInstructionFile(path.join(root, "missing.md"))).toBeUndefined();
+    });
+});
+
+describe("the connectors line", () => {
+
+    const CARD = "A change made through these tools shows the person a permission card first. The same change made with a command does not.";
+
+    it("names only the connectors connected, their tools and their command line", () => {
+
+        expect(connectorsNote(["ado"])).toBe(`For Azure DevOps, use Eesha Code's ado_ tools, not the az command line. ${CARD}`);
+        expect(connectorsNote(["github"])).toBe(`For GitHub, use Eesha Code's gh_ tools, not the gh command line. ${CARD}`);
+        expect(connectorsNote(["ado", "github"]))
+            .toBe(`For Azure DevOps and GitHub, use Eesha Code's ado_ and gh_ tools, not the az or gh command line. ${CARD}`);
+    });
+
+    it("is nothing when no connector is connected", () => {
+
+        expect(connectorsNote([])).toBeUndefined();
     });
 });
 

@@ -15,7 +15,7 @@ import { Connectors } from "../connectors/Connectors";
 import { EvalChatHost } from "../EvalChatHost";
 import { evalDir, evalScratchDir, type EvalVariant } from "../evals";
 import { FileStore } from "../fileStore";
-
+import { APP_INSTRUCTIONS } from "../instructions";
 import { Memory } from "../memory/Memory";
 import { MemoryStore } from "../memory/memoryStore";
 import { type MemoryChoices, type ToPage } from "../protocol";
@@ -179,7 +179,8 @@ describe("a variant and the memory", () => {
 
         const { host } = setUp();
 
-        expect(host.systemInstructions("claude")).toBeUndefined();
+        // Only Eesha Code's own text about its chat page.
+        expect(host.systemInstructions("claude")).toBe(APP_INSTRUCTIONS);
     });
 
     it("runs a Claude variant on Claude's own memory, without ours, while Claude's is still on", async () => {
@@ -190,7 +191,7 @@ describe("a variant and the memory", () => {
         expect(await host.beforeTurn("claude")).toBeUndefined();
 
         expect(host.ownMemory()).toBe(false);
-        expect(host.systemInstructions("claude")).toBeUndefined();
+        expect(host.systemInstructions("claude")).toBe(APP_INSTRUCTIONS);
     });
 
     it("gives a Claude variant ours once Claude's own memory is turned off in Settings", () => {
