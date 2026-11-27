@@ -1502,6 +1502,17 @@ export const API = {
     evalStop: "/api/eval/stop",
 
     /**
+     * `{ name, variant }` → `{ eval: EvalView, sendProblem? }` or
+     * `{ problem }`. Runs one variant again from the start: its old copy,
+     * chat and numbers are thrown away, it gets a new copy from where the
+     * evaluation started, and the kept message is sent to it alone.
+     * Refused while it works, and before it had its message.
+     * `sendProblem`: the new copy was made, but the message did not go -
+     * Send to new variants sends it. It cannot be brought back.
+     */
+    evalVariantRetry: "/api/eval/variant/retry",
+
+    /**
      * `{ name }` → `{ report: EvalReport }` or `{ problem }`. Every
      * variant's numbers, the files its copy differs in, and its size on disk.
      */

@@ -20,7 +20,7 @@ import type { ChatStore } from "../chat/chatStore";
 import type { ChatSpecLink, ToChatHost, ToChatView } from "../shared/chatMessages";
 import { ServerChatHost, serverAiEnv, HostServer, readShown } from "./ServerChatHost";
 import { EvalChatHost } from "./EvalChatHost";
-import { dropStart, evalCopyDir, evalDir, evalNames, evalOfChat, evalScratchDir, evalStateFile, type EvalVariant, isEvalName, makeCopy, readEval, type SavedEval, saveStart, variantMessage, writeEval } from "./evals";
+import { dropStart, evalCopyDir, evalDir, evalNames, evalOfChat, evalScratchDir, evalStateFile, type EvalVariant, isEvalName, makeCopy, moveAside, readEval, type SavedEval, saveStart, variantMessage, withoutRun, writeEval } from "./evals";
 import { copyChanges, folderBytes, turnReportsOfFile } from "./evalReport";
 import { evalTasks, evalTasksDir, findingInFolder, taskClosing } from "./evalTasks";
 import { runtimeVersion } from "./runtimeVersion";
@@ -1584,6 +1584,7 @@ export class EeshaServer implements HostServer, SddServer {
             case API.evalReport:
             case API.evalPick:
             case API.evalVariantRemove:
+            case API.evalVariantRetry:
             case API.evalDelete:
                 return this.evalApi(response, route, body);
         }
@@ -2092,6 +2093,9 @@ export class EeshaServer implements HostServer, SddServer {
             case API.evalVariantRemove:
                 return this.evalVariantRemove(response, saved, body);
 
+            case API.evalVariantRetry:
+                return this.evalVariantRetry(response, saved, body);
+
             case API.evalDelete:
                 return this.evalDelete(response, saved);
         }
@@ -2121,38 +2125,13 @@ export class EeshaServer implements HostServer, SddServer {
     }
 
     /**
-     * Sends each variant its one message: the kept message to all, with
-     * the variant's own text under it (either may be empty, not both). All
-     * start at the same moment, or none.
-     *
-     * A variant gets one message, ever - a second one would spoil the
-     * comparison. Without `onlyNew` it goes only while no variant got one:
-     * right after the evaluation is made, or with Send to all when that
-     * send did not go. `onlyNew` (Send to new variants) sends to the
-     * variants that never got one - added later - so they get exactly
-     * what the others got.
-     *
-     * Each runtime's version is written down first, so the report can
-     * say months later what each variant ran on.
+     * What each of `targets` is sent: the message kept with the
+     * evaluation, the variant's own text under it, and a saved task's
+     * closing lines last of all. A problem when the saved task's file is
+     * gone and its lines were never kept, or a variant would get nothing.
      */
-    private async sendToVariants(saved: SavedEval, onlyNew: boolean): Promise<{ problem?: string; status: number }> {
+    private keptMessage(saved: SavedEval, targets: readonly EvalVariant[]): { closing: string | undefined; messageOf: (variant: EvalVariant) => string } | { problem: string; status: number } {
 
-        const name = saved.name;
-
-        // Its send was written down, a chat file with a message in it, or a turn running: that variant got its message.
-        // The send is written down before the message goes, so a second press a moment later is refused.
-        const started = new Set(listChats(evalDir(name)).map(chat => chat.id));
-        const done = (variant: EvalVariant) => variant.ran !== undefined || started.has(variant.chatId) || this.evalWorking(variant.chatId);
-
-        if (!onlyNew && saved.variants.some(done))
-            return { status: 409, problem: "Each variant gets one message, and some already got theirs. Use Send to new variants for the ones that did not." };
-
-        const targets = saved.variants.filter(variant => !done(variant));
-
-        if (!targets.length)
-            return { status: 400, problem: "Every variant already got its message. Add a variant first." };
-
-        // The message kept with the evaluation. One made before the message was typed at create may have none yet.
         const typed = saved.sent?.text ?? "";
         const taskName = saved.sent?.task;
 
@@ -2175,13 +2154,62 @@ export class EeshaServer implements HostServer, SddServer {
         if (empty)
             return { status: 400, problem: empty };
 
-        // The common message, the variant's own text under it, and a task's closing lines last of all.
-        const messageOf = (variant: EvalVariant): string => {
+        return {
+            closing,
+            messageOf: variant => {
 
-            const joined = variantMessage(typed, variant);
+                const joined = variantMessage(typed, variant);
 
-            return closing ? `${joined}\n\n${closing}` : joined;
+                return closing ? `${joined}\n\n${closing}` : joined;
+            }
         };
+    }
+
+    /**
+     * Sends each variant its one message: the kept message to all, with
+     * the variant's own text under it (either may be empty, not both). All
+     * start at the same moment, or none.
+     *
+     * A variant gets one message, ever - a second one would spoil the
+     * comparison. Without `onlyNew` it goes only while no variant got one:
+     * right after the evaluation is made, or with Send to all when that
+     * send did not go. `onlyNew` (Send to new variants) sends to the
+     * variants that never got one - added later - so they get exactly
+     * what the others got.
+     *
+     * Each runtime's version is written down first, so the report can
+     * say months later what each variant ran on.
+     *
+     * `onlyChat`: only to that one variant, when it has not had its
+     * message - Retry, after its old run was thrown away. Other new
+     * variants are left for Send to new variants.
+     */
+    private async sendToVariants(saved: SavedEval, onlyNew: boolean, onlyChat?: string): Promise<{ problem?: string; status: number }> {
+
+        const name = saved.name;
+
+        // Its send was written down, a chat file with a message in it, or a turn running: that variant got its message.
+        // The send is written down before the message goes, so a second press a moment later is refused.
+        const started = new Set(listChats(evalDir(name)).map(chat => chat.id));
+        const done = (variant: EvalVariant) => variant.ran !== undefined || started.has(variant.chatId) || this.evalWorking(variant.chatId);
+
+        if (!onlyNew && saved.variants.some(done))
+            return { status: 409, problem: "Each variant gets one message, and some already got theirs. Use Send to new variants for the ones that did not." };
+
+        const targets = saved.variants.filter(variant => !done(variant) && (onlyChat === undefined || variant.chatId === onlyChat));
+
+        if (!targets.length)
+            return { status: 400, problem: onlyChat === undefined ? "Every variant already got its message. Add a variant first." : "This variant already got its message." };
+
+        // The message kept with the evaluation. One made before the message was typed at create may have none yet.
+        const typed = saved.sent?.text ?? "";
+        const taskName = saved.sent?.task;
+        const message = this.keptMessage(saved, targets);
+
+        if ("problem" in message)
+            return message;
+
+        const { closing, messageOf } = message;
 
         if (this.evalsMaking.has(name.toLowerCase()))
             return { status: 409, problem: "This evaluation is being changed right now. Try again in a moment." };
@@ -2731,6 +2759,114 @@ export class EeshaServer implements HostServer, SddServer {
 
             this.evalsMaking.delete(name.toLowerCase());
         }
+    }
+
+    /**
+     * Retry: runs one variant again from the start. Its old run is thrown
+     * away - its session ends, and its copy, chat, scratch folder and
+     * numbers go. It gets a new copy from where the evaluation started, a
+     * new chat, and the same message the others got. Its name, setup and
+     * own text stay. Refused while it works, and before it had its message
+     * (Send to new variants sends that). It cannot be brought back.
+     */
+    private async evalVariantRetry(response: http.ServerResponse, saved: SavedEval, body: Record<string, unknown>): Promise<void> {
+
+        const name = saved.name;
+        const variant = saved.variants.find(one => one.name === body.variant);
+
+        if (!variant)
+            return sendJson(response, 404, { problem: `There is no variant named '${String(body.variant ?? "")}' in this evaluation.` });
+
+        if (this.evalWorking(variant.chatId))
+            return sendJson(response, 409, { problem: `'${variant.name}' is still working. Stop it, or wait until it has finished, then retry it.` });
+
+        if (variant.ran === undefined && !listChats(evalDir(name)).some(chat => chat.id === variant.chatId))
+            return sendJson(response, 400, { problem: `'${variant.name}' has not had its message yet. Send to new variants sends it.` });
+
+        // Checked before the old run is thrown away: the message it is to get again.
+        const message = this.keptMessage(saved, [variant]);
+
+        if ("problem" in message)
+            return sendJson(response, message.status, { problem: message.problem });
+
+        if (this.evalsMaking.has(name.toLowerCase()))
+            return sendJson(response, 409, { problem: "This evaluation is being changed right now. Try again in a moment." });
+
+        this.evalsMaking.add(name.toLowerCase());
+
+        const copy = evalCopyDir(name, variant.name);
+
+        // A name no variant can have - a dot is not allowed in one. The old copy waits there until the new one is made.
+        const old = `${copy}.old-${Date.now()}`;
+
+        let retried: EvalVariant;
+
+        try {
+
+            // Its session ends first: its program may hold files in the copy open.
+            for (const entry of [...this.chats])
+                if (entry.controller.chatId === variant.chatId)
+                    await this.dropEntry(entry);
+
+            this.unseen.delete(variant.chatId);
+            this.answers.removeChat(variant.chatId);
+
+            await moveAside(copy, old);
+
+            try {
+
+                retried = { ...withoutRun(variant), chatId: newChatId(Date.now()), folder: await makeCopy(saved, copy) };
+
+            } catch (error) {
+
+                // The old copy goes back, so the variant stays as it was.
+                fs.rmSync(copy, { recursive: true, force: true, maxRetries: 3 });
+                await fs.promises.rename(old, copy).catch(() => undefined);
+
+                throw error;
+            }
+
+            // Read again: the pick may have been saved while the copy was made.
+            const now = readEval(name) ?? saved;
+
+            writeEval({ ...now, variants: now.variants.map(one => one.chatId === variant.chatId ? retried : one) });
+
+            await this.evalStore(name).update(PICK_PREFIX + variant.chatId, undefined);
+            await this.saveVariantPick(name, retried);
+
+            this.evalCounts.delete(name);
+
+            // The old run's files. One that cannot be removed now is only left on disk; the variant is new all the same.
+            const remove = { recursive: true, force: true, maxRetries: 5, retryDelay: 200 };
+
+            try {
+
+                await fs.promises.rm(old, remove);
+                await fs.promises.rm(evalScratchDir(name, variant.name), remove);
+                await fs.promises.rm(chatEventsPath(evalDir(name), variant.chatId), { force: true, maxRetries: 5, retryDelay: 200 });
+
+            } catch (error) {
+
+                logger.warning(`Eesha Code: retried variant ${variant.name} of ${name}, but not all of its old files were removed. ${(error as Error).message}`);
+            }
+
+        } catch (error) {
+
+            logger.warning(`Eesha Code: could not retry variant ${variant.name} of ${name}. ${(error as Error).message}`);
+
+            return sendJson(response, 500, { problem: `Could not retry '${variant.name}'. ${(error as Error).message}` });
+
+        } finally {
+
+            this.evalsMaking.delete(name.toLowerCase());
+        }
+
+        this.evalChanged(name);
+
+        // Its one message, as the others got it. When it does not go, the variant waits for Send to new variants.
+        const sent = await this.sendToVariants(readEval(name) ?? saved, true, retried.chatId);
+
+        return sendJson(response, 200, { eval: this.evalView(readEval(name) ?? saved), ...(sent.problem ? { sendProblem: sent.problem } : {}) });
     }
 
     /** Lets a kept chat go now, and waits until its session has ended. A tab showing it is told the chat is gone. */

@@ -386,6 +386,45 @@ export async function makeCopy(saved: Pick<SavedEval, "folder" | "start">, targe
     return path.join(target, path.relative(start.root, path.resolve(saved.folder)));
 }
 
+/** A variant as it was before its message went: the same setup, nothing written down about a run. */
+export function withoutRun(variant: EvalVariant): EvalVariant {
+
+    const { ran: _ran, ...rest } = variant;
+
+    void _ran;
+
+    return rest;
+}
+
+/**
+ * Moves a variant's copy to `to` in one step, so a copy is never left
+ * half removed. On Windows a program that just ended may still hold a
+ * file in it for a moment: it is tried a few times. No copy there:
+ * nothing to move.
+ */
+export async function moveAside(from: string, to: string): Promise<void> {
+
+    for (let tries = 1; ; tries++) {
+
+        try {
+
+            return await fs.promises.rename(from, to);
+
+        } catch (error) {
+
+            const code = (error as NodeJS.ErrnoException).code;
+
+            if (code === "ENOENT")
+                return;
+
+            if (tries >= 5 || (code !== "EBUSY" && code !== "EPERM" && code !== "EACCES"))
+                throw new Error(`Its old copy could not be moved aside - a program may have a file in it open. ${(error as Error).message}`);
+
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+    }
+}
+
 /** Takes the starting commit's name out of the source repository - its evaluation could not be made. */
 export async function dropStart(start: SavedEval["start"]): Promise<void> {
 

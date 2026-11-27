@@ -2035,7 +2035,7 @@ describe("the Evaluator", () => {
 
     it("refuses every request while its flag is off", async () => {
 
-        for (const route of ["/api/eval/list", "/api/eval/get", "/api/eval/create", "/api/eval/send", "/api/eval/tasks", "/api/eval/variant/add", "/api/eval/stop", "/api/eval/report", "/api/eval/pick", "/api/eval/delete"]) {
+        for (const route of ["/api/eval/list", "/api/eval/get", "/api/eval/create", "/api/eval/send", "/api/eval/tasks", "/api/eval/variant/add", "/api/eval/stop", "/api/eval/report", "/api/eval/pick", "/api/eval/variant/retry", "/api/eval/delete"]) {
 
             const answer = await post(route, { name: "one" });
 
@@ -2485,6 +2485,108 @@ describe("the Evaluator", () => {
         expect(state[`chat.pick:${chatId}`]).toBeUndefined();
 
         expect(json(await post("/api/eval/variant/remove", { name: "one", variant: "one-1" })).problem).toContain("only variant");
+    });
+
+    it("retries one variant from the start: a new copy and chat, the same setup and message, the old run gone", async () => {
+
+        await turnOn();
+
+        const folder = temporaryFolder();
+        const git = (...args: string[]) => execFileSync("git", args, { cwd: folder, env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t.invalid" } });
+
+        git("init", "--quiet");
+        git("config", "core.autocrlf", "false");
+        fs.writeFileSync(path.join(folder, "a.txt"), "day one\n");
+        git("add", "-A");
+        git("commit", "--quiet", "-m", "first");
+
+        const shown = json(await create({
+            name: "again", folder, task: "find-security",
+            variants: [{ runtime: "claude" }, { name: "own", runtime: "claude", model: "opus", extra: "Be short." }]
+        })).eval;
+
+        const [first, second] = shown.variants as { name: string; chatId: string }[];
+
+        markStarted("again", second!.chatId);
+
+        // What the old run left: a changed file in its copy, and a note in its scratch folder.
+        const copy = eeshaPath("evals", "again", "copies", "own");
+        const scratch = eeshaPath("evals", "again", "scratch", "own");
+
+        fs.writeFileSync(path.join(copy, "a.txt"), "changed by the old run\n");
+        fs.mkdirSync(scratch, { recursive: true });
+        fs.writeFileSync(path.join(scratch, "note.md"), "old\n");
+
+        // The folder moved on since: the new copy must not see it.
+        fs.writeFileSync(path.join(folder, "a.txt"), "six months on\n");
+
+        const answer = await post("/api/eval/variant/retry", { name: "again", variant: "own" });
+
+        expect(answer.status, answer.text).toBe(200);
+        expect(json(answer).sendProblem).toBeUndefined();
+
+        const variants = json(answer).eval.variants as { name: string; chatId: string }[];
+        const after = variants[1]!;
+
+        // Same name, place and setup; a new chat, and its message sent.
+        expect(variants.map(one => one.name)).toEqual(["again-1", "own"]);
+        expect(after).toMatchObject({ runtime: "claude", model: "opus", extra: "Be short.", started: true, version: "claude 9.9.9" });
+        expect(after.chatId).not.toBe(second!.chatId);
+
+        // A new copy from where the evaluation started. The old run's copy, scratch folder and chat file are gone.
+        expect(fs.readFileSync(path.join(copy, "a.txt"), "utf8")).toBe("day one\n");
+        expect(fs.readdirSync(eeshaPath("evals", "again", "copies")).sort()).toEqual(["again-1", "own"]);
+        expect(fs.existsSync(scratch)).toBe(false);
+        expect(fs.existsSync(chatEventsPath(eeshaPath("evals", "again"), second!.chatId))).toBe(false);
+
+        // Exactly the message it got the first time - common message, own text, closing lines. The other variant got nothing more.
+        expect(sentTo(after.chatId)).toEqual(sentTo(second!.chatId));
+        expect((sentTo(after.chatId)[0] as { text: string }).text).toContain("Be short.");
+        expect((sentTo(after.chatId)[0] as { text: string }).text).toContain("```findings");
+        expect(sentTo(first!.chatId)).toHaveLength(1);
+
+        // Its setup is saved for the new chat, and the old chat's is gone.
+        const state = JSON.parse(fs.readFileSync(eeshaPath("evals", "again", "state.json"), "utf8"));
+
+        expect(state[`chat.pick:${second!.chatId}`]).toBeUndefined();
+        expect(state[`chat.pick:${after.chatId}`]).toEqual({ provider: "claude", model: "opus" });
+    });
+
+    it("refuses a retry while the variant works and before it had its message, and sends a retry to that variant alone", async () => {
+
+        await turnOn();
+
+        const shown = json(await create({ name: "one", folder: workFolder(), variants: [{ runtime: "claude" }] })).eval;
+        const chatId = shown.variants[0].chatId as string;
+
+        expect((await post("/api/eval/variant/retry", { name: "one", variant: "nobody" })).status).toBe(404);
+        expect((await post("/api/eval/variant/retry", { name: "none", variant: "one-1" })).status).toBe(404);
+
+        // Its column open, a turn running.
+        const tab = await events("view-eval-retry", chatId);
+
+        open.push(tab);
+        await tab.next("eesha.hello");
+
+        live(chatId).working = true;
+
+        const busy = await post("/api/eval/variant/retry", { name: "one", variant: "one-1" });
+
+        expect(busy.status).toBe(409);
+        expect(json(busy).problem).toContain("still working");
+
+        live(chatId).working = false;
+
+        // A variant added later has had no message yet: Send to new variants sends it, not Retry.
+        const later = json(await post("/api/eval/variant/add", { name: "one", variant: { name: "later", runtime: "claude" } })).eval.variants[1].chatId as string;
+
+        expect(json(await post("/api/eval/variant/retry", { name: "one", variant: "later" })).problem).toContain("Send to new variants");
+        expect(json(await post("/api/eval/get", { name: "one" })).eval.variants[0].chatId).toBe(chatId);
+
+        // A retry sends only to the variant retried: the new one still waits for Send to new variants.
+        expect((await post("/api/eval/variant/retry", { name: "one", variant: "one-1" })).status).toBe(200);
+        expect(sentTo(later)).toEqual([]);
+        expect(json(await post("/api/eval/get", { name: "one" })).eval.variants.map((one: { started: boolean }) => one.started)).toEqual([true, false]);
     });
 
     it("adds a variant later, with its own copy from where the evaluation started", async () => {

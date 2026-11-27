@@ -43,6 +43,7 @@ function lines(page: EvalHelpPage, taskFolder: string): string[] {
                 "Send to all: shown only when the message did not go when the evaluation was made. It sends the kept message.",
                 "Add variant: a new variant with its setup and own text. In git, its copy starts from the commit the evaluation started from - the same files the others got. Not in git: a copy of the folder as it is today. Then Send to new variants sends it the kept common message with its own text, saved task lines included. The others are left alone, and may still be working.",
                 "Copy as new variant: a new variant with the same setup and own text, for you to change one thing. The old variant stays as it was.",
+                "Retry (in a column's head, once it got its message): runs that variant again from the start. Its old copy, chat and numbers are thrown away; it gets a new copy from where the evaluation started (not in git: your folder as it is today) and the same message. Its name and setup stay. Not while it works.",
                 "Remove (in a column's head): removes that variant, its copy and its chat. Not while it works, and not the last one.",
                 "Runs without asking: a tool call inside the variant's copy runs, one outside it is refused."
             ];

@@ -410,6 +410,9 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
     /** Remove one variant: asked, or on its way. */
     const [removing, setRemoving] = useState<{ variant: string; running: boolean; problem?: string } | undefined>();
 
+    /** Retry one variant: asked, or on its way. */
+    const [retrying, setRetrying] = useState<{ variant: string; running: boolean; problem?: string } | undefined>();
+
     const options = useAiOptions();
     const tasks = useEvalTasks();
 
@@ -492,7 +495,37 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
         setFormProblem(undefined);
         setDeleting(undefined);
         setRemoving(undefined);
+        setRetrying(undefined);
         setForm(next);
+    };
+
+    /** Opens one of the panels that ask first, and closes the others. */
+    const ask = (panel: "delete" | { remove: string } | { retry: string }) => {
+
+        setForm(undefined);
+        setDeleteProblem(undefined);
+        setDeleting(panel === "delete" ? "asked" : undefined);
+        setRemoving(typeof panel === "object" && "remove" in panel ? { variant: panel.remove, running: false } : undefined);
+        setRetrying(typeof panel === "object" && "retry" in panel ? { variant: panel.retry, running: false } : undefined);
+    };
+
+    /** Throws the variant's old run away and runs it again from the start, with the same message. */
+    const retryVariant = async (variant: string) => {
+
+        setActionProblem(undefined);
+        setRetrying({ variant, running: true });
+
+        const answer = await bridge.request<{ eval?: EvalView; sendProblem?: string }>(API.evalVariantRetry, { name, variant });
+
+        if (answer.problem || !answer.eval)
+            return setRetrying({ variant, running: false, problem: answer.problem ?? "The server did not retry the variant." });
+
+        setRetrying(undefined);
+        setShown(answer.eval);
+
+        // The new copy is there, but its message did not go: Send to new variants sends it.
+        if (answer.sendProblem)
+            setActionProblem(answer.sendProblem);
     };
 
     const removeVariant = async (variant: string) => {
@@ -630,7 +663,7 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
                 <Button size="sm" variant="secondary" disabled={full !== undefined} title={full} onClick={() => openForm({ kind: "add", draft: newDraft(options?.defaultRuntime ?? options?.runtimes[0] ?? shown.variants[0]?.runtime ?? "") })}>
                     Add variant
                 </Button>
-                <Button size="sm" variant="danger" disabled={deleting === "running"} onClick={() => { setForm(undefined); setRemoving(undefined); setDeleteProblem(undefined); setDeleting("asked"); }}>
+                <Button size="sm" variant="danger" disabled={deleting === "running"} onClick={() => ask("delete")}>
                     Delete evaluation
                 </Button>
                 <a href={evalAddress()}>All evaluations</a>
@@ -646,6 +679,23 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
                         <div className="evals__row">
                             <Button variant="danger" disabled={removing.running} onClick={() => void removeVariant(removing.variant)}>{removing.running ? "Removing…" : "Remove for good"}</Button>
                             <Button variant="secondary" disabled={removing.running} onClick={() => setRemoving(undefined)}>Keep it</Button>
+                        </div>
+                    </div>
+                )
+                : null}
+
+            {retrying
+                ? (
+                    <div className="evals__panel" role="alertdialog" aria-label="Retry a variant">
+                        <p>
+                            Retry <strong>{retrying.variant}</strong>? Its copy, its chat and its numbers are thrown away. It gets a new copy
+                            {shown.commit ? ` from commit ${shown.commit}, where the evaluation started,` : " of your folder as it is today (it is not in git),"} and
+                            the same message again. The old run cannot be brought back.
+                        </p>
+                        {retrying.problem ? <p className="evals__problem" role="alert">{retrying.problem}</p> : null}
+                        <div className="evals__row">
+                            <Button variant="danger" disabled={retrying.running} onClick={() => void retryVariant(retrying.variant)}>{retrying.running ? "Making the copy…" : "Retry from the start"}</Button>
+                            <Button variant="secondary" disabled={retrying.running} onClick={() => setRetrying(undefined)}>Keep it</Button>
                         </div>
                     </div>
                 )
@@ -747,9 +797,16 @@ function EvalOne({ name }: { name: string }): React.JSX.Element {
                                             </Button>
                                         )
                                         : null}
+                                    {variant.started && !variant.working
+                                        ? (
+                                            <Button size="xs" fill="ghost" variant="secondary" title="Run this variant again from the start, with the same setup and message. Its old copy, chat and numbers are thrown away." onClick={() => ask({ retry: variant.name })}>
+                                                Retry
+                                            </Button>
+                                        )
+                                        : null}
                                     {count > 1 && !variant.working
                                         ? (
-                                            <Button size="xs" fill="ghost" variant="secondary" title="Remove this variant: its copy, chat and numbers." onClick={() => { setForm(undefined); setDeleting(undefined); setRemoving({ variant: variant.name, running: false }); }}>
+                                            <Button size="xs" fill="ghost" variant="secondary" title="Remove this variant: its copy, chat and numbers." onClick={() => ask({ remove: variant.name })}>
                                                 Remove
                                             </Button>
                                         )
